@@ -72,11 +72,35 @@ COPY ./buildroot.config /buildroot-2022.02.5/.config
 RUN apt install -y file cpio unzip
 RUN cd /buildroot-2022.02.5 && make -j8
 
-# RUN  git clone -b h616-v13 https://github.com/apritzel/linux
+RUN git config --global http.postBuffer 524288000
+
+RUN  git clone -b h616-v13 https://github.com/apritzel/linux
 RUN   git clone https://github.com/lwfinger/rtl8723ds
 RUN echo "start downloads linux apritzel"
 
-RUN git clone https://github.com/apritzel/linux.git -b h616-v13
+COPY ./boot.cmd /linux-6.0.19/boot.cmd
+RUN apt install -y u-boot-tools
+RUN cd /linux-6.0.19 && mkimage -C none -A arm64 -T script -d boot.cmd boot.scr
+
+# COPY ./out/linux /linux
+RUN cp -r /rtl8723ds  /linux/drivers/net/wireless/realtek/rtl8723ds
+
+COPY ./rtl8Kconfig /linux/drivers/net/wireless/realtek/rtl8723ds/Kconfig
+
+COPY ./realtek_Kconfig /linux/drivers/net/wireless/realtek/Kconfig
+COPY ./linux_main_realtek_Makefile /linux/drivers/net/wireless/realtek/Makefile
+# # RUN make menuconfig
+COPY ./linux_main_menuconfig /linux/.config
+
+RUN apt-get install -y libelf-dev apt-utils
+
+
+# RUN cd /linux &&  make modules -j8
+
+# COPY ./main_sun50i-h616-orangepi-zero2.dts /linux/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
+# RUN cd /linux && make dtbs
+
+# RUN git clone https://github.com/apritzel/linux.git -b h616-v13
 
 # RUN apt install -y dkmop
 # RUN make -j8
