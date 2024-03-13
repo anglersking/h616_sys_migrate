@@ -94,8 +94,8 @@ COPY ./linux_main_menuconfig /linux/.config
 
 RUN apt-get install -y libelf-dev apt-utils
 
-
-# RUN cd /linux &&  make modules -j8
+COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
+RUN cd /linux &&  make modules -j8
 
 # COPY ./main_sun50i-h616-orangepi-zero2.dts /linux/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
 # RUN cd /linux && make dtbs
