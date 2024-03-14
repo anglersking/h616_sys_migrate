@@ -96,6 +96,82 @@ RUN apt-get install -y libelf-dev apt-utils
 
 COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
 RUN cd /linux &&  make modules -j8
+COPY ./buildroot_finally_config /buildroot-2022.02.5/.config
+RUN  cd /buildroot-2022.02.5 && make -j8
+
+COPY ./entrypoint.sh /
+RUN chmod a+x ./entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+# # 在内核中执行 安装模块到第二分区的rootfs中（因为内核没经过裁剪会有大量的模块安装到第二分区，可能需要调整下第二分区的大小）
+# make INSTALL_MOD_PATH=/mnt/rootfs/ modules modules_install
+
+#USB 启动UBOOT 
+#../sunxi-tools/sunxi-fel uboot u-boot-sunxi-with-spl.bin
+
+
+# sunxi-fel -v uboot u-boot-sunxi-with-spl.bin \
+#              write 0x40200000 Image \
+#              write 0x4fa00000 sun50i-a64-pine64-lts.dtb \
+#              write 0x4fc00000 boot.scr \
+#              write 0x4ff00000 rootfs.cpio.lzma.uboot
+
+# # 例如：
+# ./sunxi-tools/sunxi-fel -v uboot u-boot/u-boot-sunxi-with-spl.bin \
+# write 0x40200000 linux-6.0-rc3/arch/arm64/boot/Image \
+# write 0x4fa00000 linux-6.0-rc3/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dtb \ 
+# write 0x4fc00000 boot.scr
+
+
+#制作启动盘
+# 进入磁盘管理
+# fdisk /dev/sdd
+
+# # 多执行几次删除所有分区
+# d
+
+# # 新建分区 （扇区为单位，前面空开20MB用于存放uboot，制作128MB的分区）
+# n
+# p
+# 40960
+# 303104
+# w
+
+# # 进行 FAT 格式化
+# sudo mkfs.fat /dev/sdd1
+
+# # 写入 uboot 到 8KB 的位置
+# sudo dd if=./u-boot/u-boot-sunxi-with-spl.bin of=/dev/sdd bs=8K seek=1
+
+# # 挂载 FAT 文件系统
+# sudo mount /dev/sdd1 /mnt/boot/
+
+# # 复制内核以及设备树到FAT分区
+# sudo cp linux-6.0-rc3/arch/arm64/boot/Image /mnt/boot/
+# sudo cp linux-6.0-rc3/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dtb /mnt/boot/
+
+# # 卸载 FAT 文件系统
+# sudo umount /mnt/boot
+
+#测试 TF 卡启动内核
+
+# 手动装载内核以及设备树并启动
+# fatload mmc 0:1 0x40200000 Image
+# fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb
+# setenv bootargs 'console=ttyS0,115200 earlycon'
+# booti 0x40200000 - 0x4fa00000
+
+# # 使用如下设置变量并保存到FAT分区
+# setenv bootargs 'console=ttyS0,115200'
+# setenv bootcmd 'fatload mmc 0:1 0x40200000 Image;fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb;booti 0x40200000 - 0x4fa00000'
+# saveenv
+
+# # 使用 bootcmd 启动
+# boot
+
+
+
+
 
 # COPY ./main_sun50i-h616-orangepi-zero2.dts /linux/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
 # RUN cd /linux && make dtbs
