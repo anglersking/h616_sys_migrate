@@ -14,7 +14,7 @@ RUN tar xvf u-boot-2024.01.tar.bz2
 RUN rm -r u-boot-2024.01.tar.bz2
 
 
-RUN wget https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
+RUN wget --no-check-certificate  https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
 RUN tar -xvf gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
 # RUN cd gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu && 
 RUN mv gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu /opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu
@@ -48,17 +48,18 @@ RUN apt-get install -y usbutils rsync
 COPY ./uboot_config /u-boot-2024.01/.config
 COPY ./axp305.c /u-boot-2024.01/drivers/power/axp305.c
 COPY ./dram_sun50i_h616.c arch/arm/mach-sunxi/dram_sun50i_h616.c
-RUN cd u-boot-2024.01 && make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin orangepi_zero2_defconfig -j8
+RUN cd u-boot-2024.01 && make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin orangepi_zero2_defconfig -j100
 
-RUN cd u-boot-2024.01 && make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin -j8
+RUN cd u-boot-2024.01 && make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin -j100
 
 RUN wget https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.0.19.tar.gz
 # COPY ./linux-6.0.19.tar.gz /
 RUN tar -xvf linux-6.0.19.tar.gz
+
 RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
-RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 Image
-RUN  cd linux-6.0.19/ &&  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 dtbs
-RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 modules
+RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 Image
+RUN  cd linux-6.0.19/ &&  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 dtbs
+RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 modules
 #RUN  apt install -y depmod
 RUN  cd linux-6.0.19/ && mkdir MINSTALL && mkdir HINSTALL
 RUN  cd linux-6.0.19/ &&  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=./MINSTALL  modules modules_install
@@ -66,38 +67,57 @@ RUN  cd linux-6.0.19/ &&   make ARCH=arm64 INSTALL_HDR_PATH=HINSTALL headers_ins
 
 
 
-RUN wget https://buildroot.org/downloads/buildroot-2022.02.5.tar.gz
+RUN wget  https://buildroot.org/downloads/buildroot-2022.02.5.tar.gz
 RUN tar -xvf buildroot-2022.02.5.tar.gz
 COPY ./buildroot.config /buildroot-2022.02.5/.config
 RUN apt install -y file cpio unzip
-RUN cd /buildroot-2022.02.5 && make -j8
+RUN cd /buildroot-2022.02.5 && make -j100
 
 RUN git config --global http.postBuffer 524288000
 
-RUN  git clone -b h616-v13 https://github.com/apritzel/linux
-RUN   git clone https://github.com/lwfinger/rtl8723ds
+# RUN  git clone -b h616-v13 https://github.com/apritzel/linux
+# RUN   git clone https://github.com/lwfinger/rtl8723ds
+RUN git clone https://github.com/YuzukiHD/Xradio-XR829.git -b 5.15
 RUN echo "start downloads linux apritzel"
 
 COPY ./boot.cmd /linux-6.0.19/boot.cmd
 RUN apt install -y u-boot-tools
 RUN cd /linux-6.0.19 && mkimage -C none -A arm64 -T script -d boot.cmd boot.scr
 
-# COPY ./out/linux /linux
-RUN cp -r /rtl8723ds  /linux/drivers/net/wireless/realtek/rtl8723ds
 
-COPY ./rtl8Kconfig /linux/drivers/net/wireless/realtek/rtl8723ds/Kconfig
+# # COPY ./out/linux /linux
+# RUN cp -r /rtl8723ds  /linux/drivers/net/wireless/realtek/rtl8723ds
+RUN cp -r /Xradio-XR829  /linux-6.0.19/drivers/net/wireless/realtek/xr829
 
-COPY ./realtek_Kconfig /linux/drivers/net/wireless/realtek/Kconfig
-COPY ./linux_main_realtek_Makefile /linux/drivers/net/wireless/realtek/Makefile
-# # RUN make menuconfig
-COPY ./linux_main_menuconfig /linux/.config
+# COPY ./rtl8Kconfig /linux/drivers/net/wireless/realtek/rtl8723ds/Kconfig
+# COPY ./xr89Kconfig /linux-6.0.19/drivers/net/wireless/realtek/xr829/Kconfig
+
+COPY ./realtek_Kconfig /linux-6.0.19/drivers/net/wireless/realtek/Kconfig
+
+# COPY ./realtek_Kconfig /linux/drivers/net/wireless/realtek/Kconfig
+# COPY ./linux_main_realtek_Makefile /linux/drivers/net/wireless/realtek/Makefile
+COPY ./linux_main_realtek_Makefile /linux-6.0.19/drivers/net/wireless/realtek/Makefile
+COPY ./main_sun50i-h616-orangepi-zero2.dts /linux-6.0.19/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
+# # # RUN make menuconfig
+# COPY ./linux_main_menuconfig /linux/.config
 
 RUN apt-get install -y libelf-dev apt-utils
+RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- clean
+RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 Image
+RUN  cd linux-6.0.19/ &&  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 dtbs
+RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 modules
 
-COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
-RUN cd /linux &&  make modules -j8
+RUN  cd linux-6.0.19/ && rm -r MINSTALL/*  && rm -r HINSTALL/*
+RUN  cd linux-6.0.19/ &&  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=./MINSTALL  modules modules_install
+RUN  cd linux-6.0.19/ &&   make ARCH=arm64 INSTALL_HDR_PATH=HINSTALL headers_install
+
+# COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
+# RUN cd /linux &&  make modules -j100
+
 COPY ./buildroot_finally_config /buildroot-2022.02.5/.config
-RUN  cd /buildroot-2022.02.5 && make -j8
+# COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
+# RUN cd /linux &&  make modules -j100
+RUN  cd /buildroot-2022.02.5 && make -j100
 
 COPY ./entrypoint.sh /
 RUN chmod a+x ./entrypoint.sh
@@ -179,7 +199,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 # RUN git clone https://github.com/apritzel/linux.git -b h616-v13
 
 # RUN apt install -y dkmop
-# RUN make -j8
+# RUN make -j100
 # RUN git clone -b h616-v13 https://github.com/apritzel/linux
 # RUN git clone https://github.com/lwfinger/rtl8723ds 
 # RUN cp /rtl8723ds /linux/drivers/net/wireless/realtek/rtl8723ds
@@ -187,9 +207,9 @@ ENTRYPOINT ["/entrypoint.sh"]
 # 14  ls
 #   115  cd linux-6.0.19/
 #   116  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
-#   117  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 Image
-#   118  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 dtbs
-#   119  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j8 modules
+#   117  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 Image
+#   118  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 dtbs
+#   119  make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j100 modules
 #   120  ls
 #   121  mkdir MINSTALL
 #   122  mkdir HINSTALL
