@@ -1,16 +1,39 @@
+#!/bin/bash
+DISK="./sdcard.img"
 # 创建 images 目录
-mkdir images
-cd images
+# mkdir images
+# cd images
 
-# 收集需要用到的文件到 file 目录
-mkdir file 
-cp ../u-boot/u-boot-sunxi-with-spl.bin ./file
-cp ../linux-5.19.0/arch/arm64/boot/Image ./file
-cp ../linux-5.19.0/arch/arm64/boot/dts/allwinner/mq-quad.dtb ./file  // 这里我已经单独做了个设备树文件
-cp ../buildroot-2022.02.5/output/images/rootfs.tar ./file
+# # 收集需要用到的文件到 file 目录
+# mkdir file 
+# cp ../u-boot/u-boot-sunxi-with-spl.bin ./file
+# cp ../linux-5.19.0/arch/arm64/boot/Image ./file
+# cp ../linux-5.19.0/arch/arm64/boot/dts/allwinner/mq-quad.dtb ./file  // 这里我已经单独做了个设备树文件
+# cp ../buildroot-2022.02.5/output/images/rootfs.tar ./file
 
 # 制作空的 img 文件
-sudo dd if=/dev/zero of=./sdcard.img bs=1M count=512
+sudo dd if=/dev/zero of=./sdcard.img bs=1M count=2048
+
+
+fdisk $DISK << EOF
+d   # 删除分区
+d   # 删除分区，继续执行直到所有分区都被删除
+d   # 如果有多个分区，重复执行删除
+
+n   # 新建分区
+p   # 主分区
+1   # 分区号 1
+40960  # 起始扇区（空出20MB用于uboot）
+303104 # 结束扇区，设置分区大小为128MB
+
+w   # 保存并退出
+EOF
+
+echo "分区创建完成"
+
+
+
+
 
 sudo fdisk ./sdcard.img
 n

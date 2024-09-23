@@ -99,7 +99,7 @@ COPY ./realtek_Kconfig /linux-6.0.19/drivers/net/wireless/realtek/Kconfig
 COPY ./linux_main_realtek_Makefile /linux-6.0.19/drivers/net/wireless/realtek/Makefile
 COPY ./main_sun50i-h616-orangepi-zero2.dts /linux-6.0.19/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
 # # # RUN make menuconfig
-# COPY ./linux_main_menuconfig /linux/.config
+COPY ./linux_main_menuconfig /linux/.config
 
 RUN apt-get install -y libelf-dev apt-utils
 RUN  cd linux-6.0.19/ && make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- clean
@@ -118,9 +118,11 @@ COPY ./buildroot_finally_config /buildroot-2022.02.5/.config
 # COPY ./fixbug/ioctl_cfg80211.c /linux/drivers/net/wireless/realtek/rtl8723ds/os_dep/linux/ioctl_cfg80211.c
 # RUN cd /linux &&  make modules -j100
 RUN  cd /buildroot-2022.02.5 && make -j100
-
+RUN apt-get install -y kmod dosfstools
 COPY ./entrypoint.sh /
+COPY ./sdcard_make/shuaxie.sh /
 RUN chmod a+x ./entrypoint.sh
+RUN chmod a+x ./shuaxie.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 # # 在内核中执行 安装模块到第二分区的rootfs中（因为内核没经过裁剪会有大量的模块安装到第二分区，可能需要调整下第二分区的大小）
