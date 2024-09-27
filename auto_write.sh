@@ -1,4 +1,4 @@
-export sdcard=sda
+export sdcard=sdc
 export num1=1
 export num2=2
 
