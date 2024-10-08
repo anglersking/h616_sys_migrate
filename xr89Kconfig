@@ -1,0 +1,4 @@
+config XR89
+	tristate "Realtek XR89 SDIO or SPI WiFi"
+	help
+	  Help message of XR89
