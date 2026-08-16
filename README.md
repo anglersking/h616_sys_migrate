@@ -1,7 +1,7 @@
 # Peutiy-Pi (菩提派)
 
 基于全志 H616 的自制 Linux 开发板，从零构建主线 Linux 系统。
-基于 Buildroot + 主线 U-Boot + apritzel h616-v13 内核，完全脱离芯片厂 BSP。
+基于 Buildroot + 主线 U-Boot + Linux 6.0.19 内核，完全脱离芯片厂 BSP。
 
 ## 硬件
 
@@ -16,17 +16,17 @@
 
 | 接口 | 状态 | 说明 |
 |------|------|------|
-| HDMI | ✅ 支持 | DRM 框架，最大 4K@30Hz，apritzel h616-v13 内核原生驱动 |
-| ST7789 1.47" LCD | ✅ 支持 | SPI1 接口，172×320，可用于无显示器时应急操作 |
+| HDMI | ✅ 支持 | sun4i DRM + DesignWare HDMI；项目设备树补齐 H616 display pipeline |
+| ST7789 1.47" LCD | ✅ 支持 | SPI1 4-wire（独立 DC/RST）+ fbtft，172×320 |
 
-**HDMI 和 ST7789 双显共存**：系统启动后两个显示设备同时注册 (`/dev/fb0` 和 `/dev/fb1`)，可通过 `con2fbmap` 在运行时切换 console 输出：
+**HDMI 和 ST7789 双显共存**：系统启动后两个显示设备会注册。编号由驱动探测顺序决定，先用 `cat /proc/fb` 确认，再用 `con2fbmap` 切换 console 输出：
 
 ```bash
-# 切换到 ST7789
-con2fbmap 1 1
+# 查看 framebuffer 编号（不要假定 HDMI 一定是 fb0）
+cat /proc/fb
 
-# 切回 HDMI
-con2fbmap 1 0
+# 例如：将 tty1 切到 ST7789 所在 framebuffer
+con2fbmap 1 <st7789-fb-number>
 
 # 查看显示状态
 cat /sys/class/drm/card0-HDMI-A-1/status
@@ -59,7 +59,7 @@ cat /sys/class/drm/card0-HDMI-A-1/status
 |------|------|------|
 | ARM Trusted Firmware | mainline master | BL31 |
 | U-Boot | 2024.01 | Bootloader, orangepi_zero2_defconfig |
-| Linux Kernel | h616-v13 (apritzel) | 含 HDMI/H616 完整驱动 + 无线网卡驱动 |
+| Linux Kernel | 6.0.19 (mainline) | 含 sun4i DRM/DW HDMI、H616 HDMI PHY、fbtft ST7789V |
 | GCC 工具链 | ARM 10.3 (aarch64-none-linux-gnu) | 替代已下架的 Linaro 7.5 |
 | Buildroot | 2022.02.5 | 根文件系统 + 编译无线驱动后重编内核 |
 | Debian | Bullseye arm64 | debootstrap 引导，备选 rootfs |
@@ -339,9 +339,9 @@ dumpe2fs -h p2_partition.img 2>/dev/null | grep -E 'Block count|Free blocks|Bloc
 
 ## 注意事项
 
-- **内核来源**: 使用 apritzel/linux `h616-v13` 分支，含完整 HDMI/H616 驱动 + DTS
-- **内核 compatible 匹配**: DTS 中 HDMI 相关节点必须使用 H6 compatible（`sun50i-h6-dw-hdmi` 等），不能使用 H616 命名（主线 6.0.19 内核未注册 H616 变体）
-- **不要用主线 linux-6.0.19** — 缺少 H616 HDMI DTS 节点 (`&de`/`&hdmi`/`&hdmi_out`)
+- **内核来源**: 使用 Linux 6.0.19；构建时以本仓库的 `sun50i-h616-yuzuki.dtsi` 覆盖内核 DTSI，提供 H616 的 display engine、TCON 和 HDMI 节点。
+- **HDMI compatible**: HDMI 控制器使用驱动已支持的 H6 compatible（`allwinner,sun50i-h6-dw-hdmi`）；H616 特有 PHY 由 `CONFIG_PHY_SUN50I_H616_HDMI=y` 支持。
+- **ST7789 驱动选择**: 这块屏是带 DC/RST 的 8-bit/4-wire SPI 模块，必须使用 `CONFIG_FB_TFT_ST7789V=y`、`buswidth = <8>` 与 `rotate`；不能使用只支持 9-bit SPI、240×320 的 DRM `panel-sitronix-st7789v` 驱动。
 - **工具链**: ARM 官方 10.3，前缀 `aarch64-none-linux-gnu-`
 - **编译并行度**: `-j2` (适配路由器弱 CPU)，如果自己的机器跑可以改大
 - **rootfs 大小**: Buildroot ext2 分区改为 256M (128M 不够放下 sshd 等组件)

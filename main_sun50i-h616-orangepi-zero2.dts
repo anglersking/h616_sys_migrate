@@ -273,14 +273,23 @@ wifi_pwrseq: wifi-pwrseq {
 	pinctrl-0 = <&spi1_pins>, <&spi1_cs_pin>;
 
 	display@0 {
+		/*
+		 * The 1.47 inch module is a 4-wire SPI panel: DC and RESET
+		 * are discrete GPIOs.  Use the fbtft ST7789V driver, not the
+		 * DRM panel driver (which expects a 9-bit SPI bus and a 240x320
+		 * RGB panel).
+		 */
 		compatible = "sitronix,st7789v";
 		reg = <0>;
 		spi-max-frequency = <32000000>;
 		dc-gpios = <&pio 6 6 GPIO_ACTIVE_HIGH>;   /* PG6 */
-		reset-gpios = <&pio 6 7 GPIO_ACTIVE_LOW>;  /* PG7 */
-		rotation = <90>;
+		reset-gpios = <&pio 6 7 GPIO_ACTIVE_LOW>; /* PG7 */
+		buswidth = <8>;
+		rotate = <90>;
 		width = <172>;
 		height = <320>;
+		bgr;
+		status = "okay";
 	};
 };
 
@@ -290,6 +299,10 @@ wifi_pwrseq: wifi-pwrseq {
 
 &hdmi {
 	hvcc-supply = <&reg_bldo1>;
+	status = "okay";
+};
+
+&hdmi_phy {
 	status = "okay";
 };
 

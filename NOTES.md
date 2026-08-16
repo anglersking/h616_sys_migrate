@@ -46,7 +46,7 @@ rmmod 8723ds              # 卸载模块
 // 启用 SPI + 挂设备
 &spi1 {
     status = "okay";
-    pinctrl-0 = <&spi1_pins>, <&spi1_cs0_pin>;
+    pinctrl-0 = <&spi1_pins>, <&spi1_cs_pin>;
 
     display@0 {
         compatible = "sitronix,st7789v";
@@ -54,6 +54,11 @@ rmmod 8723ds              # 卸载模块
         spi-max-frequency = <32000000>;
         dc-gpios = <&pio 6 6 GPIO_ACTIVE_HIGH>;
         reset-gpios = <&pio 6 7 GPIO_ACTIVE_LOW>;
+        buswidth = <8>;
+        width = <172>;
+        height = <320>;
+        rotate = <90>;
+        bgr;
     };
 };
 
@@ -236,7 +241,12 @@ display-engine (de) → hdmi 控制器 → hdmi_out 端口 → hdmi-connector �
     mixer0                DW HDMI          endpoint       Type D Micro
 ```
 
-关键：`sun50i-h616.dtsi` 里 de/hdmi 默认 `status = "disabled"`，必须在自己的 DTS 里显式 `status = "okay"`。
+关键：`sun50i-h616.dtsi` 里 de/hdmi 默认 `status = "disabled"`，必须在自己的 DTS 里显式 `status = "okay"`。HDMI PHY 也应显式启用。
+
+ST7789 这块板是 4-wire SPI（独立 DC/RST），因此用 fbtft 的
+`CONFIG_FB_TFT_ST7789V=y`，并在 DTS 中设置 `buswidth = <8>` 和
+`rotate`。不要使用 DRM `panel-sitronix-st7789v`：该驱动需要 9-bit SPI
+且固定为 240×320，与本板 172×320 的接线和面板不符。
 
 ---
 

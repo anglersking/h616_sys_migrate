@@ -39,7 +39,7 @@ RUN cd u-boot-2024.01 && \
     make CROSS_COMPILE=aarch64-none-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin orangepi_zero2_defconfig -j2 && \
     make CROSS_COMPILE=aarch64-none-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin -j2
 
-# ====== Linux 6.0.19 (主线内核，含完整 sunxi de33/hdmi 驱动) ======
+# ====== Linux 6.0.19 (主线内核 + 项目 H616 HDMI 设备树扩展) ======
 RUN wget https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.0.19.tar.gz && \
     tar -xvf linux-6.0.19.tar.gz && \
     rm linux-6.0.19.tar.gz
@@ -63,10 +63,10 @@ COPY ./linux_main_realtek_Makefile /linux-6.0.19/drivers/net/wireless/realtek/Ma
 # ====== YuzukiHD dtsi 覆盖（含完整 display engine pipeline: de33/mixer/TCON/HDMI/HDMI-PHY） ======
 COPY ./sun50i-h616-yuzuki.dtsi /linux-6.0.19/arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi
 
-# ====== 自定义 DTS（HDMI connector + ST7789 + Ethernet + WiFi + UART） ======
+# ====== 自定义 DTS（HDMI connector + 4-wire SPI ST7789 + Ethernet + WiFi + UART） ======
 COPY ./main_sun50i-h616-orangepi-zero2.dts /linux-6.0.19/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dts
 
-# ====== 内核配置（已启用 sun4i DRM, DW HDMI, ST7789, rtl8723ds 等） ======
+# ====== 内核配置（内建 sun4i DRM/DW HDMI 与 fbtft ST7789V，避免启动阶段模块缺失） ======
 COPY ./linux_main_menuconfig /linux-6.0.19/.config
 
 # ====== 编译内核 ======
