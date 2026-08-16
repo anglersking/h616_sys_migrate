@@ -19,18 +19,38 @@
 | HDMI | ✅ 支持 | sun4i DRM + DesignWare HDMI；项目设备树补齐 H616 display pipeline |
 | ST7789 1.47" LCD | ✅ 支持 | SPI1 4-wire（独立 DC/RST）+ fbtft，172×320 |
 
-**HDMI 和 ST7789 双显共存**：系统启动后两个显示设备会注册。编号由驱动探测顺序决定，先用 `cat /proc/fb` 确认，再用 `con2fbmap` 切换 console 输出：
+**HDMI 和 ST7789 双显共存**：系统启动后两个显示设备会注册。编号由驱动探测顺序决定，先用 `cat /proc/fb` 确认，再用 `con2fbmap` 切换 Linux console 输出：
 
 ```bash
 # 查看 framebuffer 编号（不要假定 HDMI 一定是 fb0）
 cat /proc/fb
 
-# 例如：将 tty1 切到 ST7789 所在 framebuffer
-con2fbmap 1 <st7789-fb-number>
+# 自动找出 fbtft ST7789 对应的 framebuffer 编号并将 tty1 切过去
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+test -n "$ST7789_FB" || { echo "ST7789 framebuffer not found"; exit 1; }
+con2fbmap 1 "$ST7789_FB"
+chvt 1
+
+# 切回 HDMI（sun4i DRM framebuffer）
+HDMI_FB=$(awk '$2 ~ /drm/ { print $1; exit }' /proc/fb)
+test -n "$HDMI_FB" || { echo "HDMI framebuffer not found"; exit 1; }
+con2fbmap 1 "$HDMI_FB"
+chvt 1
 
 # 查看显示状态
 cat /sys/class/drm/card0-HDMI-A-1/status
 ```
+
+`con2fbmap` 只切换内核 console，不能切换已经运行的图形桌面。当前
+Buildroot 配置没有启用 X11 或 Wayland，因此镜像默认提供的是串口/tty 与
+framebuffer 应用。任何支持 fbdev 的非桌面程序都可以直接打开
+`/dev/fb${ST7789_FB}`；`fbtest` 安装后可用 `fbtest --fb /dev/fb${ST7789_FB}`
+测试。
+
+ST7789 也可以运行图形桌面，但需另行在 Buildroot 中加入 Xorg fbdev 或
+Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动与 HDMI
+镜像；需要两个独立图形会话，或额外的 framebuffer-copy 程序。受限于
+172×320 分辨率和 SPI 带宽，适合轻量状态面板/简单桌面，不适合视频或高刷新率桌面。
 
 ### ST7789 接线 (Orange Pi Zero2 40pin 排针)
 
@@ -215,8 +235,9 @@ screen /dev/ttyUSB0 115200
 cat /sys/class/drm/card0-HDMI-A-1/status  # 查看 HDMI 连接状态
 cat /sys/class/drm/card0-HDMI-A-1/modes   # 查看支持的分辨率
 
-# ST7789 显示测试
-fbtest --fb /dev/fb1
+# ST7789 显示测试（先从 /proc/fb 获取实际编号）
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+fbtest --fb "/dev/fb${ST7789_FB}"
 ```
 
 ## 项目结构

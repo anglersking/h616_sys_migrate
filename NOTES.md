@@ -262,9 +262,16 @@ ls /sys/class/drm/
 cat /sys/class/drm/card0-HDMI-A-1/status    # HDMI 连接状态
 cat /sys/class/drm/card0-HDMI-A-1/modes     # 支持的分辨率
 
-# 切换 framebuffer console
-con2fbmap 1 0   # tty1 → fb0 (HDMI)
-con2fbmap 1 1   # tty1 → fb1 (ST7789)
+# 切换 framebuffer console（不要假设 fb 编号；由探测顺序决定）
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+con2fbmap 1 "$ST7789_FB"
+chvt 1
+
+HDMI_FB=$(awk '$2 ~ /drm/ { print $1; exit }' /proc/fb)
+con2fbmap 1 "$HDMI_FB"
+chvt 1
+
+# con2fbmap 仅影响 tty console，不能切换 X11/Wayland 的桌面输出。
 
 # GPIO
 cat /sys/kernel/debug/gpio                   # 查看所有 GPIO 状态

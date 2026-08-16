@@ -53,10 +53,25 @@ cat /sys/class/drm/card0-HDMI-A-1/status
 dmesg | grep -iE 'spi|fbtft|st7789'
 cat /proc/fb
 
-# framebuffer 编号由探测顺序决定；先查看 /proc/fb，再选择对应编号测试
-fbtest --fb /dev/fbN
-con2fbmap 1 N
+# 切到 ST7789 的 tty console（按驱动名获取实际 framebuffer 编号）
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+test -n "$ST7789_FB" || { echo "ST7789 framebuffer not found"; exit 1; }
+con2fbmap 1 "$ST7789_FB"
+chvt 1
+
+# 如已安装 fbtest，可直接测试该 framebuffer
+fbtest --fb "/dev/fb${ST7789_FB}"
 ```
 
 如 HDMI connector 编号不是 `card0-HDMI-A-1`，请从 `ls /sys/class/drm/`
 的实际输出中选择对应项。
+
+## 图形桌面
+
+当前 Buildroot 配置没有选择 X11、Wayland 或 Weston，所以默认镜像不会启动
+桌面。ST7789 仍可作为图形桌面的显示目标：启用 Xorg 的 fbdev 驱动或 Weston
+fbdev 后端，并让该图形服务器打开 `/dev/fb${ST7789_FB}`。
+
+这与 `con2fbmap` 无关：后者只切换 tty console。HDMI 与 ST7789 是两个独立
+framebuffer，不会自动镜像；如需镜像，需要单独的 framebuffer-copy 程序。
+172×320 的 SPI 面板适合简单控制 UI，不适合动画、视频或完整高刷新率桌面。
