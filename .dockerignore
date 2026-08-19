@@ -1,0 +1,8 @@
+.git
+.vscode
+doc
+picture
+out
+out-*
+*.img
+*.log

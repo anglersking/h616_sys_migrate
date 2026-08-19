@@ -61,6 +61,19 @@
 		regulator-always-on;
 	};
 
+	/* VBUS for the board's USB host ports.  PC16 is the board's
+	 * active-high host-power enable, as used by the U-Boot configuration. */
+	reg_usb1_vbus: usb1-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb1-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_vcc5v>;
+		gpio = <&pio 2 16 GPIO_ACTIVE_HIGH>; /* PC16 */
+		enable-active-high;
+		status = "okay";
+	};
+
 	reg_vcc3v3: vcc3v3 {
 	compatible = "regulator-fixed";
 	regulator-name = "vcc-3v3";
@@ -82,15 +95,28 @@
 	vin-supply = <&reg_vcc5v>;
 };
 
-reg_vcc_wifi_io: vcc-wifi-io {
-	/* Always on 1.8V/300mA regulator for WiFi and BT IO */
-	compatible = "regulator-fixed";
+	reg_vcc_wifi_io: vcc-wifi-io {
+		/* Always on 1.8V/300mA regulator for WiFi and BT IO */
+		compatible = "regulator-fixed";
 	regulator-name = "vcc-wifi-io";
 	regulator-min-microvolt = <1800000>;
 	regulator-max-microvolt = <1800000>;
 	regulator-always-on;
-	vin-supply = <&reg_vcc33_wifi>;
-};
+		vin-supply = <&reg_vcc33_wifi>;
+	};
+
+	/*
+	 * The AXP305 RSB driver in this Yuzuki kernel cannot register on this board,
+	 * although U-Boot leaves the board's HDMI 1.8 V rail enabled.  Do not
+	 * make the HDMI DRM driver defer forever on the unavailable PMIC node.
+	 */
+	reg_hdmi_1v8: hdmi-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "hdmi-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
 
 wifi_pwrseq: wifi-pwrseq {
 	compatible = "mmc-pwrseq-simple";
@@ -251,6 +277,15 @@ wifi_pwrseq: wifi-pwrseq {
 	vcc-pg-supply = <&reg_vcc3v3>;
 	vcc-ph-supply = <&reg_vcc3v3>;
 	vcc-pi-supply = <&reg_vcc3v3>;
+
+	/* Peutiy-Pi routes the ST7789 chip-select to header pin 27 (PH5).
+	 * Yuzuki's generic H616 DTSI names PH9 as its default SPI1 CS, so use
+	 * an explicit board pin group here instead of inheriting that mapping.
+	 */
+	spi1_cs_ph5_pin: spi1-cs-ph5-pin {
+		pins = "PH5";
+		function = "spi1";
+	};
 };
 
 &spi0  {
@@ -270,7 +305,7 @@ wifi_pwrseq: wifi-pwrseq {
 &spi1 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins>, <&spi1_cs_pin>;
+	pinctrl-0 = <&spi1_pins>, <&spi1_cs_ph5_pin>;
 
 	display@0 {
 		/*
@@ -298,11 +333,17 @@ wifi_pwrseq: wifi-pwrseq {
 };
 
 &hdmi {
-	hvcc-supply = <&reg_bldo1>;
+	hvcc-supply = <&reg_hdmi_1v8>;
+	status = "okay";
+};
+
+&hdmi_audio {
 	status = "okay";
 };
 
 &hdmi_phy {
+	compatible = "allwinner,sun50i-h616-hdmi-phy",
+		     "allwinner,sun50i-h6-hdmi-phy";
 	status = "okay";
 };
 
@@ -310,6 +351,52 @@ wifi_pwrseq: wifi-pwrseq {
 	hdmi_out_con: endpoint {
 		remote-endpoint = <&hdmi_con_in>;
 	};
+};
+
+/* Enable the H616 USB host PHY and all EHCI/OHCI pairs.  The unpopulated
+ * ports are harmless, while the board's USB-A host port is supplied by
+ * usb1-vbus above. */
+&usbphy {
+	usb1_vbus-supply = <&reg_usb1_vbus>;
+	status = "okay";
+};
+
+&ehci0 {
+	status = "okay";
+};
+
+&ehci1 {
+	status = "okay";
+};
+
+&ehci2 {
+	status = "okay";
+};
+
+&ehci3 {
+	status = "okay";
+};
+
+&ohci0 {
+	status = "okay";
+};
+
+&ohci1 {
+	status = "okay";
+};
+
+&ohci2 {
+	status = "okay";
+};
+
+&ohci3 {
+	status = "okay";
+};
+
+&usbotg {
+	/* USB-C is the board's debug/power OTG connector, not the host port. */
+	dr_mode = "peripheral";
+	status = "okay";
 };
 
 &uart0 {

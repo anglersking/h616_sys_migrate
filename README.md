@@ -1,7 +1,7 @@
 # Peutiy-Pi (菩提派)
 
 基于全志 H616 的自制 Linux 开发板，从零构建主线 Linux 系统。
-基于 Buildroot + 主线 U-Boot + Linux 6.0.19 内核，完全脱离芯片厂 BSP。
+基于 Buildroot + 主线 U-Boot + Yuzuki H616 主线内核，完全脱离芯片厂 BSP。
 
 ## 硬件
 
@@ -11,15 +11,23 @@
 - **电源管理**: AXP305
 - **存储**: MicroSD + SPI NOR Flash
 - **网络**: 千兆以太网 + WiFi (RTL8723DS / XR829)
+- **USB**: USB-A Host（EHCI/OHCI + PC16 VBUS）+ USB-C peripheral/调试口
 
 ### 显示输出
 
 | 接口 | 状态 | 说明 |
 |------|------|------|
-| HDMI | ✅ 支持 | sun4i DRM + DesignWare HDMI；项目设备树补齐 H616 display pipeline |
+| HDMI | ✅ 支持 | Yuzuki H616 DE/TCON/DesignWare HDMI 显示链路 |
 | ST7789 1.47" LCD | ✅ 支持 | SPI1 4-wire（独立 DC/RST）+ fbtft，172×320 |
 
+HDMI 登录界面和 USB-A Host 键盘已在 Peutiy-Pi 实板上验证。USB-C 端口保留为
+peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
+
 **HDMI 和 ST7789 双显共存**：系统启动后两个显示设备会注册。编号由驱动探测顺序决定，先用 `cat /proc/fb` 确认，再用 `con2fbmap` 切换 Linux console 输出：
+
+Debian 镜像已包含 `con2fbmap` 和 `chvt`，并会在 HDMI DRM framebuffer
+注册后自动将 `tty1` 映射到 HDMI。下列命令用于手动切换或排障；请以 root
+身份执行。
 
 ```bash
 # 查看 framebuffer 编号（不要假定 HDMI 一定是 fb0）
@@ -52,6 +60,31 @@ Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动
 镜像；需要两个独立图形会话，或额外的 framebuffer-copy 程序。受限于
 172×320 分辨率和 SPI 带宽，适合轻量状态面板/简单桌面，不适合视频或高刷新率桌面。
 
+### 以太网、Wi-Fi 和蓝牙
+
+内核和镜像同时包含 H616 千兆以太网 MAC + Realtek PHY、RTL8723DS SDIO
+Wi-Fi、Linux Bluetooth/BLE 协议栈、Realtek HCI 驱动，以及 `ip`、`iw`、
+`wpa_supplicant`、`rfkill`、`bluetoothctl` 和 `btattach` 工具。启动后可按下面
+的命令确认硬件是否被枚举：
+
+```bash
+ip link                         # 应看到 eth0；有线 DHCP：udhcpc -i eth0
+modprobe 8723ds                # Wi-Fi 模块（若尚未自动加载）
+rfkill unblock all
+iw dev                          # 应看到 wlan0
+ip link set wlan0 up
+iw dev wlan0 scan | head
+
+bluetoothctl                    # 蓝牙控制器出现后执行
+power on
+scan on
+```
+
+RTL8723DS 的蓝牙部分取决于板上实际连接的 USB/UART HCI 总线：USB HCI 会由
+内核自动绑定；若是独立 UART 模块，需要按原理图对应的 `/dev/ttyS*` 手动运行
+`btattach`，再进入 `bluetoothctl`。镜像已包含 H4/3-wire/Realtek UART 支持，
+但设备树不会猜测未确认的 UART 引脚。
+
 ### ST7789 接线 (Orange Pi Zero2 40pin 排针)
 
 | ST7789 | 排针号 | GPIO |
@@ -60,7 +93,7 @@ Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动
 | VCC | 1/17 | 3.3V |
 | SCL | 29 | PH6 (SPI1_CLK) |
 | SDA | 31 | PH7 (SPI1_MOSI) |
-| RES (MISO) | 33 | PH8 (SPI1_MISO) |
+| MISO | 33 | PH8 (SPI1_MISO，ST7789 通常不接) |
 | CS | 27 | PH5 (SPI1_CS0) |
 | DC | 22 | PG6 |
 | RST | 16 | PG7 |
@@ -71,7 +104,10 @@ Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动
 
 ## 构建环境
 
-本项目使用 Docker 构建，隔离环境依赖。
+本项目使用 Docker 构建，隔离环境依赖。`yuzuki-h616` 分支使用
+`dumtux/Allwinner-H616` 的 H616 显示改动叠加到 Linux 5.16.17 源码上，
+与已验证的 Yuzuki H616 主线镜像使用同一套 HDMI 设备树和驱动；本项目仅
+叠加 Peutiy-Pi 的 AXP305、网络和 ST7789 配置。
 
 ### 构建组件
 
@@ -79,7 +115,7 @@ Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动
 |------|------|------|
 | ARM Trusted Firmware | mainline master | BL31 |
 | U-Boot | 2024.01 | Bootloader, orangepi_zero2_defconfig |
-| Linux Kernel | 6.0.19 (mainline) | 含 sun4i DRM/DW HDMI、H616 HDMI PHY、fbtft ST7789V |
+| Linux Kernel | Yuzuki H616 mainline 5.16.17 | 原生 H616 HDMI PHY 与 fbtft ST7789V |
 | GCC 工具链 | ARM 10.3 (aarch64-none-linux-gnu) | 替代已下架的 Linaro 7.5 |
 | Buildroot | 2022.02.5 | 根文件系统 + 编译无线驱动后重编内核 |
 | Debian | Bullseye arm64 | debootstrap 引导，备选 rootfs |
@@ -96,6 +132,20 @@ cd Peutiy-Pi
 # 产物自动输出到 /mnt/nvme0n1-4/out/
 sh build_all.sh /mnt/nvme0n1-4/out
 ```
+
+### macOS（Intel 与 Apple Silicon）
+
+安装并启动 Docker Desktop 后，直接运行：
+
+```bash
+sh build_all.sh
+```
+
+脚本在 macOS 上自动使用 `linux/amd64` 容器：Intel Mac 原生执行，Apple
+Silicon 通过 Docker Desktop 的模拟执行，因此构建会较慢但与 Linux 使用同一套
+交叉工具链。SD 镜像在容器内直接写入文件，不依赖 macOS 不提供的 `losetup` 或
+Linux 挂载接口。macOS 的默认输出目录为当前仓库下的 `out/`，也可以将自定义
+目录作为第一个参数、镜像大小（MiB）作为第二个参数传入。
 
 ### 方式二：只编译（产物在容器内）
 
@@ -122,17 +172,17 @@ docker cp $(docker create h616_core_build):/out ./
 
 ```
 out/
-├── Image                                   # Linux 内核镜像
-├── sun50i-h616-orangepi-zero2.dtb           # 设备树二进制
-├── boot.scr                                # U-Boot 启动脚本（设置 root=/dev/mmcblk0p2）
-├── u-boot-sunxi-with-spl.bin                # U-Boot + SPL 镜像
-├── modules/                                # 内核模块目录
+├── image/Image                             # Linux 内核镜像
+├── dtb/sun50i-h616-orangepi-zero2.dtb      # 设备树二进制
+├── bootscr/boot.scr                        # U-Boot 启动脚本
+├── uboot/u-boot-sunxi-with-spl.bin         # U-Boot + SPL 镜像
+├── modules/lib/modules/                    # 内核模块目录
 ├── buildroot/
 │   ├── rootfs.ext2                         # Buildroot 根文件系统 (ext2)
 │   └── rootfs.tar                          # Buildroot 根文件系统 (tar)
-├── debian/                                 # Debian Buster arm64 rootfs
-├── sdcard_buildroot.img                    # ✅ Buildroot 完整 SD 卡镜像 (512M, 双分区, 可直接刷)
-└── sdcard_debian.img                       # ✅ Debian 完整 SD 卡镜像 (512M, 双分区, 可直接刷)
+├── debian-rootfs.tar                       # Debian Bullseye arm64 rootfs
+├── sdcard_buildroot.img                    # ✅ Buildroot 完整 SD 卡镜像 (1024M, 双分区, 可直接刷)
+└── sdcard_debian.img                       # ✅ Debian 完整 SD 卡镜像 (1024M, 双分区, 可直接刷)
 ```
 
 每个 `.img` 文件结构：
@@ -182,7 +232,7 @@ w
 EOF
 
 # 3. 写入 U-Boot 到 8KB 偏移
-dd if=out/u-boot-sunxi-with-spl.bin of=/dev/$sdcard bs=8K seek=1
+dd if=out/uboot/u-boot-sunxi-with-spl.bin of=/dev/$sdcard bs=8K seek=1
 
 # 4. 格式化
 mkfs.fat /dev/${sdcard}1
@@ -190,9 +240,9 @@ mkfs.ext4 /dev/${sdcard}2
 
 # 5. 写入 boot 分区
 mount /dev/${sdcard}1 /mnt/boot/
-cp out/Image /mnt/boot/
-cp out/sun50i-h616-orangepi-zero2.dtb /mnt/boot/
-cp out/boot.scr /mnt/boot/
+cp out/image/Image /mnt/boot/
+cp out/dtb/sun50i-h616-orangepi-zero2.dtb /mnt/boot/
+cp out/bootscr/boot.scr /mnt/boot/
 umount /mnt/boot
 
 # 6. 写入 rootfs 分区
@@ -200,13 +250,13 @@ umount /mnt/boot
 # Buildroot 版:
 mount /dev/${sdcard}2 /mnt/rootfs/
 tar xf out/buildroot/rootfs.tar -C /mnt/rootfs
-cp -r out/modules /mnt/rootfs/lib/
+cp -a out/modules/lib/. /mnt/rootfs/lib/
 umount /mnt/rootfs
 
 # Debian 版:
 mount /dev/${sdcard}2 /mnt/rootfs/
-cp -a out/debian/. /mnt/rootfs/
-cp -r out/modules /mnt/rootfs/lib/
+tar xf out/debian-rootfs.tar -C /mnt/rootfs
+cp -a out/modules/lib/. /mnt/rootfs/lib/
 umount /mnt/rootfs
 ```
 
@@ -219,11 +269,15 @@ BROM → SPL → ATF (BL31) → U-Boot → Linux Kernel → RootFS
 U-Boot 启动参数 (`boot.cmd` → `boot.scr`)：
 
 ```
-bootargs: console=ttyS0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
+bootargs: console=ttyS0,115200 console=tty0 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
 bootcmd:  fatload mmc 0:1 0x40200000 Image
           fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb
           booti 0x40200000 - 0x4fa00000
 ```
+
+Debian 镜像首次启动的测试账号为 `peutiy`，密码为 `peutiy`；也可使用
+`root` / `peutiy` 进行诊断。镜像会在 HDMI 的虚拟终端 `tty1` 显示登录提示。
+这是硬件测试凭据，连接网络前应立即修改密码。
 
 ## 调试
 
@@ -361,9 +415,9 @@ dumpe2fs -h p2_partition.img 2>/dev/null | grep -E 'Block count|Free blocks|Bloc
 ## 注意事项
 
 - **内核来源**: 使用 Linux 6.0.19；构建时以本仓库的 `sun50i-h616-yuzuki.dtsi` 覆盖内核 DTSI，提供 H616 的 display engine、TCON 和 HDMI 节点。
-- **HDMI compatible**: HDMI 控制器使用驱动已支持的 H6 compatible（`allwinner,sun50i-h6-dw-hdmi`）；H616 特有 PHY 由 `CONFIG_PHY_SUN50I_H616_HDMI=y` 支持。
+- **HDMI compatible**: HDMI 控制器复用 `allwinner,sun50i-h6-dw-hdmi`，PHY 使用回移的 `allwinner,sun50i-h616-hdmi-phy` 参数表（H6 初始化流程），由内建的 `CONFIG_DRM_SUN8I_DW_HDMI=y` 驱动绑定。
 - **ST7789 驱动选择**: 这块屏是带 DC/RST 的 8-bit/4-wire SPI 模块，必须使用 `CONFIG_FB_TFT_ST7789V=y`、`buswidth = <8>` 与 `rotate`；不能使用只支持 9-bit SPI、240×320 的 DRM `panel-sitronix-st7789v` 驱动。
 - **工具链**: ARM 官方 10.3，前缀 `aarch64-none-linux-gnu-`
-- **编译并行度**: `-j2` (适配路由器弱 CPU)，如果自己的机器跑可以改大
+- **编译并行度**: 默认按容器可见 CPU 数全核构建；Linux 使用标准 Make jobserver，macOS 通过独立作业池兼容 Docker Desktop。
 - **rootfs 大小**: Buildroot ext2 分区改为 256M (128M 不够放下 sshd 等组件)
 - **Buildroot 构建源**: 已配置清华 tuna 镜像源加速国内下载

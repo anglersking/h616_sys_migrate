@@ -1,9 +1,10 @@
 # HDMI 与 ST7789 显示适配
 
-本项目使用 Linux 6.0.19。构建时会将仓库内的
-`sun50i-h616-yuzuki.dtsi` 安装为内核的 `sun50i-h616.dtsi`，补齐 H616
-所需的 display engine、TCON、DesignWare HDMI 和 HDMI PHY 节点；随后用
-`main_sun50i-h616-orangepi-zero2.dts` 启用板级连接。
+本分支使用 Linux 5.16.17，并叠加 `dumtux/Allwinner-H616` 中的 H616 显示
+相关目录。这样保留 Yuzuki 的 display engine、TCON、DesignWare HDMI 和
+HDMI PHY 设备树与驱动；`main_sun50i-h616-orangepi-zero2.dts` 只负责启用
+板级连接、供电、网络和 ST7789。不要再用 6.0.19 的兼容 DTSI 或 HDMI PHY
+回移补丁覆盖它。
 
 ## HDMI
 
@@ -15,16 +16,18 @@ display-engine (de) -> mixer0 -> tcon_top/tcon_tv -> HDMI -> connector
 
 以下配置必须同时存在：
 
-- DTS 中 `&de`、`&hdmi` 和 `&hdmi_phy` 的 `status = "okay"`
+- DTS 中 `&de`、`&hdmi`、`&hdmi_audio` 和 `&hdmi_phy` 的 `status = "okay"`
 - HDMI 输出 endpoint 与 `hdmi-connector` 双向连接
-- `hvcc-supply = <&reg_bldo1>`，为 HDMI PHY 提供 1.8 V
+- `hvcc-supply = <&reg_hdmi_1v8>`，为 HDMI PHY 提供 1.8 V。该固定稳压器
+  表示 U-Boot 已开启的板级 HDMI 供电；不能引用 AXP305 RSB 提供的
+  `reg_bldo1`，因为该 PMIC 在此内核上注册失败会使 HDMI 永久延迟探测
 - 内核配置中的 `CONFIG_DRM_SUN4I=y`、`CONFIG_DRM_SUN8I_DW_HDMI=y`、
-  `CONFIG_DRM_SUN8I_MIXER=y`、`CONFIG_DRM_SUN8I_TCON_TOP=y` 和
-  `CONFIG_PHY_SUN50I_H616_HDMI=y`
+  `CONFIG_DRM_SUN8I_MIXER=y` 与 `CONFIG_DRM_SUN8I_TCON_TOP=y`
 
-该构建不使用 `apritzel/linux` 的旧 `h616-v13` 分支：该分支基于
-5.19-rc1，且其 H616 DTS 没有 HDMI display pipeline，不能和本项目的
-6.0.19 配置混用。
+H616 HDMI 控制器和 PHY 使用 Yuzuki 内核树中的原生
+`allwinner,sun50i-h616-dw-hdmi` 与 `allwinner,sun50i-h616-hdmi-phy`，由
+`CONFIG_DRM_SUN8I_DW_HDMI=y` 编入内核。这样保持与已验证的 Yuzuki 镜像相同
+的显示初始化路径。
 
 ## ST7789 1.47 inch (172x320)
 

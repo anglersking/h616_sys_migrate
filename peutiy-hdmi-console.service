@@ -1,0 +1,9 @@
+[Unit]
+Description=Map tty1 to the HDMI DRM framebuffer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/peutiy-hdmi-console
+
+[Install]
+WantedBy=multi-user.target

@@ -25,8 +25,7 @@ fi
 # Buildroot rootfs
 mkdir -p /out/buildroot
 cp /buildroot-2022.02.5/output/images/rootfs.ext2 /out/buildroot/ 2>/dev/null || true
-mkdir -p /out/rootfs
-cp /buildroot-2022.02.5/output/images/rootfs.tar /out/rootfs/ 2>/dev/null || true
+cp /buildroot-2022.02.5/output/images/rootfs.tar /out/buildroot/ 2>/dev/null || true
 
 # Debian rootfs
 mkdir -p /out/debian
