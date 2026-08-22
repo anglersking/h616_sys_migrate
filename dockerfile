@@ -142,6 +142,7 @@ RUN cd ${KERNEL_DIR} && \
 # ====== boot.scr ======
 COPY ./boot.cmd /linux-5.16.17/boot.cmd
 RUN cd ${KERNEL_DIR} && mkimage -C none -A arm64 -T script -d boot.cmd boot.scr
+RUN grep -a -q 'fbcon=map:0' ${KERNEL_DIR}/boot.scr
 
 # ====== Buildroot ======
 # Buildroot 2022.02's BusyBox configuration invokes recursive make. Keep the
@@ -199,6 +200,9 @@ RUN mkdir -p /path/to/rootfs && \
 
 COPY ./peutiy-hdmi-console.sh /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console
 COPY ./peutiy-hdmi-console.service /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service
+RUN grep -q 'fb_st7789v' /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console && \
+    grep -q 'Keep ST7789 framebuffer console on tty1' \
+        /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service
 
 # Debian's bootstrap root account is locked by default. These credentials are
 # solely for first-boot HDMI/serial diagnostics and must be changed afterward.
