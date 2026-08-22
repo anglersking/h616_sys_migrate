@@ -29,18 +29,19 @@ H616 HDMI 控制器和 PHY 使用 Yuzuki 内核树中的原生
 `CONFIG_DRM_SUN8I_DW_HDMI=y` 编入内核。这样保持与已验证的 Yuzuki 镜像相同
 的显示初始化路径。
 
-### 让启动日志默认显示在 HDMI
+### 让启动日志默认显示在 ST7789
 
 `boot.cmd` 已设置：
 
 ```text
-video=HDMI-A-1:1920x1080@60D fbcon=map:1
+video=HDMI-A-1:1920x1080@60D fbcon=map:0
 ```
 
 在 ST7789 先注册为 `fb0`、HDMI 随后注册为 `fb1` 的正常顺序下，
-`fbcon=map:1` 会把内核 framebuffer console 指向 HDMI；串口仍由
-`console=ttyS0,115200` 同时保留。`video=` 用来强制 HDMI connector 上电并
-选择 1920×1080@60，避免没有 EDID 时 DRM framebuffer 延后出现。
+`fbcon=map:0` 会把内核 framebuffer console 指向 ST7789；串口仍由
+`console=ttyS0,115200` 同时保留。`video=` 仍会初始化 HDMI connector 并
+选择 1920×1080@60，避免没有 EDID 时 DRM framebuffer 延后出现。Debian 用户空间
+的 `peutiy-hdmi-console.service` 会把 `tty1` 保持在 ST7789。
 
 启动后请确认编号，不要盲目假定：
 
@@ -49,7 +50,7 @@ cat /proc/fb
 ls /sys/class/drm
 ```
 
-如果 HDMI 实际不是 `fb1`，可在 U-Boot 命令行临时改为相应的 `fbcon=map:N`；
+如果 ST7789 实际不是 `fb0`，可在 U-Boot 命令行临时改为相应的 `fbcon=map:N`；
 如果 `/proc/fb` 完全没有 `sun4i-drmdrmfb`，这不是 console 映射问题，应先检查
 HDMI 的 DRM/CRTC 日志和连接器状态。
 

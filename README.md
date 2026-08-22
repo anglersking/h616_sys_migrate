@@ -29,18 +29,15 @@ peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
 
 1. `boot.cmd` 设置 `console=ttyS0,115200 console=tty0`，所以串口日志始终保留；
    `video=HDMI-A-1:1920x1080@60D` 请求 HDMI 使用 1920×1080@60。
-2. `fbcon=map:1` 请求 framebuffer console 使用编号为 `fb1` 的设备。当前正常
-   探测顺序是 ST7789=`fb0`、HDMI DRM=`fb1`，因此 HDMI 在上电时已连接时，内核
-   启动日志会直接显示在 HDMI。
-3. `peutiy-hdmi-console.service` 在 Debian 进入多用户目标后运行一次：如果
-   HDMI connector 状态为 `connected` 且 DRM framebuffer 存在，就把 `tty1`
-   映射到 HDMI；否则把 `tty1` 映射到 ST7789。这样登录提示和后续终端会自动
-   选择可用的屏幕。
+2. `fbcon=map:0` 请求 framebuffer console 使用编号为 `fb0` 的设备。当前正常
+   探测顺序是 ST7789=`fb0`、HDMI DRM=`fb1`，所以早期内核启动日志会先显示在
+   ST7789；串口日志始终保留。
+3. `peutiy-hdmi-console.service` 在 Debian 进入多用户目标后运行一次，把 `tty1`
+   映射回 ST7789 并切换到虚拟终端 1。因此 Debian 的登录提示和终端也在小屏上，
+   HDMI 仍会初始化，可单独运行桌面或手动把 tty1 切过去。
 
-这套自动判断发生在“本次启动”期间：请在开机前接好并打开 HDMI 显示器。运行中
-热插拔 HDMI 不会重新打印已经过去的内核日志；热插拔后可手动重启服务或执行
-下面的切换命令。`con2fbmap` 只影响 Linux tty，不会切换已经运行的 X11/Wayland
-桌面。
+这套配置故意不让 HDMI 在启动时抢占 tty1。`con2fbmap` 只影响 Linux tty，不会
+切换已经运行的 X11/Wayland 桌面。
 
 #### 确认当前状态
 
@@ -80,16 +77,14 @@ con2fbmap 1 "$ST7789_FB"
 chvt 1
 ```
 
-也可以在 HDMI 热插拔后让启动选择服务重新判断：
+也可以在需要时让服务重新把 tty1 放回 ST7789：
 
 ```bash
 systemctl restart peutiy-hdmi-console.service
 ```
 
-注意：`fbcon=map:1` 依赖 HDMI framebuffer 在内核注册为 `fb1`。如果 HDMI
-驱动没有注册成功，最早期 printk 只能通过串口确认；系统进入用户空间后，服务
-仍会把 tty1 选择到已存在的 ST7789。要让早期日志稳定出现在 HDMI，请确保 HDMI
-在上电前已连接，并确认 `/proc/fb` 中存在 `sun4i-drmdrmfb`。
+注意：`fbcon=map:0` 依赖 ST7789 在内核注册为 `fb0`。如果小屏驱动没有注册，
+早期 printk 仍可通过串口确认；系统进入用户空间后，服务会等待 ST7789 出现。
 
 当前 Buildroot 配置没有启用 X11 或 Wayland，因此镜像默认提供的是串口/tty
 与 framebuffer 应用。任何支持 fbdev 的非桌面程序都可以直接打开
@@ -115,19 +110,13 @@ display@0 {
 
 然后重新编译内核/DTB 和镜像，再刷入 SD 卡。这样启动后不会创建
 `fb_st7789v`，HDMI 会成为唯一的显示 framebuffer。由于 HDMI 此时通常会变成
-`fb0`，还要把 `boot.cmd` 中的：
-
-```text
-fbcon=map:1
-```
-
-改成：
+`fb0`，`boot.cmd` 应保持为：
 
 ```text
 fbcon=map:0
 ```
 
-再重新生成 `boot.scr`；否则 `fbcon=map:1` 仍然指向不存在的第二个 framebuffer，
+再重新生成 `boot.scr`；否则如果仍使用 `fbcon=map:1`，它会指向不存在的第二个 framebuffer，
 早期日志可能不会出现在 HDMI。
 
 只想临时关闭时，在运行中的系统执行：
@@ -359,14 +348,15 @@ BROM → SPL → ATF (BL31) → U-Boot → Linux Kernel → RootFS
 U-Boot 启动参数 (`boot.cmd` → `boot.scr`)：
 
 ```
-bootargs: console=ttyS0,115200 console=tty0 video=HDMI-A-1:1920x1080@60D fbcon=map:1 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
+bootargs: console=ttyS0,115200 console=tty0 video=HDMI-A-1:1920x1080@60D fbcon=map:0 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
 bootcmd:  fatload mmc 0:1 0x40200000 Image
           fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb
           booti 0x40200000 - 0x4fa00000
 ```
 
 Debian 镜像首次启动的测试账号为 `peutiy`，密码为 `peutiy`；也可使用
-`root` / `peutiy` 进行诊断。镜像会在 HDMI 的虚拟终端 `tty1` 显示登录提示。
+`root` / `peutiy` 进行诊断。镜像会在 ST7789 的虚拟终端 `tty1` 显示登录提示；
+HDMI 仍会初始化。
 这是硬件测试凭据，连接网络前应立即修改密码。
 
 ## 调试

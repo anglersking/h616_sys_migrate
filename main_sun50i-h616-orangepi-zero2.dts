@@ -327,8 +327,7 @@ wifi_pwrseq: wifi-pwrseq {
 		rotate = <90>;
 		width = <172>;
 		height = <320>;
-		/* 172x320 modules use a 240x320 ST7789 RAM window. With rotate=90,
-		 * the portrait X offset becomes a landscape Y offset. */
+		/* 172x320 modules use the 34-pixel RAM-window offset in landscape. */
 		y-offset = <34>;
 		bgr;
 		status = "okay";
