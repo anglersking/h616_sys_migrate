@@ -1,5 +1,5 @@
 [Unit]
-Description=Map tty1 to the HDMI DRM framebuffer
+Description=Select HDMI or ST7789 framebuffer for tty1
 
 [Service]
 Type=oneshot

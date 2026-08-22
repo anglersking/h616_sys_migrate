@@ -23,41 +23,76 @@
 HDMI 登录界面和 USB-A Host 键盘已在 Peutiy-Pi 实板上验证。USB-C 端口保留为
 peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
 
-**HDMI 和 ST7789 双显共存**：系统启动后两个显示设备会注册。编号由驱动探测顺序决定，先用 `cat /proc/fb` 确认，再用 `con2fbmap` 切换 Linux console 输出：
+#### 当前显示逻辑
 
-Debian 镜像已包含 `con2fbmap` 和 `chvt`，并会在 HDMI DRM framebuffer
-注册后自动将 `tty1` 映射到 HDMI。下列命令用于手动切换或排障；请以 root
-身份执行。
+系统同时保留串口和屏幕终端：
 
-启动脚本默认带有 `video=HDMI-A-1:1920x1080@60D fbcon=map:1`。在本板的
-驱动探测顺序下，ST7789 是 `fb0`、HDMI DRM 是 `fb1`，因此内核启动日志和
-`tty0/tty1` 会优先显示在 HDMI；`console=ttyS0,115200` 仍会保留串口日志。
-如果 HDMI 没有接入或没有成功注册，系统会回退到已存在的 framebuffer，届时
-仍可通过下面的命令检查并手动切换。
+1. `boot.cmd` 设置 `console=ttyS0,115200 console=tty0`，所以串口日志始终保留；
+   `video=HDMI-A-1:1920x1080@60D` 请求 HDMI 使用 1920×1080@60。
+2. `fbcon=map:1` 请求 framebuffer console 使用编号为 `fb1` 的设备。当前正常
+   探测顺序是 ST7789=`fb0`、HDMI DRM=`fb1`，因此 HDMI 在上电时已连接时，内核
+   启动日志会直接显示在 HDMI。
+3. `peutiy-hdmi-console.service` 在 Debian 进入多用户目标后运行一次：如果
+   HDMI connector 状态为 `connected` 且 DRM framebuffer 存在，就把 `tty1`
+   映射到 HDMI；否则把 `tty1` 映射到 ST7789。这样登录提示和后续终端会自动
+   选择可用的屏幕。
+
+这套自动判断发生在“本次启动”期间：请在开机前接好并打开 HDMI 显示器。运行中
+热插拔 HDMI 不会重新打印已经过去的内核日志；热插拔后可手动重启服务或执行
+下面的切换命令。`con2fbmap` 只影响 Linux tty，不会切换已经运行的 X11/Wayland
+桌面。
+
+#### 确认当前状态
+
+以下命令请以 root 身份执行：
 
 ```bash
-# 查看 framebuffer 编号（不要假定 HDMI 一定是 fb0）
 cat /proc/fb
+ls /sys/class/drm/
+cat /sys/class/drm/card0-HDMI-A-1/status  # connected 或 disconnected
+systemctl status peutiy-hdmi-console.service
+```
 
-# 自动找出 fbtft ST7789 对应的 framebuffer 编号并将 tty1 切过去
-ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
-test -n "$ST7789_FB" || { echo "ST7789 framebuffer not found"; exit 1; }
-con2fbmap 1 "$ST7789_FB"
-chvt 1
+预期 framebuffer 类似：
 
-# 切回 HDMI（sun4i DRM framebuffer）
+```text
+0 fb_st7789v
+1 sun4i-drmdrmfb
+```
+
+编号由驱动探测顺序决定，不要盲目固定使用 `fb0` 或 `fb1`。
+
+#### 手动切换到 HDMI
+
+```bash
 HDMI_FB=$(awk '$2 ~ /drm/ { print $1; exit }' /proc/fb)
 test -n "$HDMI_FB" || { echo "HDMI framebuffer not found"; exit 1; }
 con2fbmap 1 "$HDMI_FB"
 chvt 1
-
-# 查看显示状态
-cat /sys/class/drm/card0-HDMI-A-1/status
 ```
 
-`con2fbmap` 只切换内核 console，不能切换已经运行的图形桌面。当前
-Buildroot 配置没有启用 X11 或 Wayland，因此镜像默认提供的是串口/tty 与
-framebuffer 应用。任何支持 fbdev 的非桌面程序都可以直接打开
+#### 手动切换到 ST7789
+
+```bash
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+test -n "$ST7789_FB" || { echo "ST7789 framebuffer not found"; exit 1; }
+con2fbmap 1 "$ST7789_FB"
+chvt 1
+```
+
+也可以在 HDMI 热插拔后让启动选择服务重新判断：
+
+```bash
+systemctl restart peutiy-hdmi-console.service
+```
+
+注意：`fbcon=map:1` 依赖 HDMI framebuffer 在内核注册为 `fb1`。如果 HDMI
+驱动没有注册成功，最早期 printk 只能通过串口确认；系统进入用户空间后，服务
+仍会把 tty1 选择到已存在的 ST7789。要让早期日志稳定出现在 HDMI，请确保 HDMI
+在上电前已连接，并确认 `/proc/fb` 中存在 `sun4i-drmdrmfb`。
+
+当前 Buildroot 配置没有启用 X11 或 Wayland，因此镜像默认提供的是串口/tty
+与 framebuffer 应用。任何支持 fbdev 的非桌面程序都可以直接打开
 `/dev/fb${ST7789_FB}`；`fbtest` 安装后可用 `fbtest --fb /dev/fb${ST7789_FB}`
 测试。
 
@@ -65,6 +100,52 @@ ST7789 也可以运行图形桌面，但需另行在 Buildroot 中加入 Xorg fb
 Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动与 HDMI
 镜像；需要两个独立图形会话，或额外的 framebuffer-copy 程序。受限于
 172×320 分辨率和 SPI 带宽，适合轻量状态面板/简单桌面，不适合视频或高刷新率桌面。
+
+#### 关闭 ST7789 以节省资源
+
+ST7789 空闲时不会持续占用大量 CPU，但会占用一个 framebuffer、约 110 KiB
+显存，以及 SPI/GPIO 驱动资源。只使用 HDMI 时，推荐在设备树中永久关闭它：
+
+```dts
+/* main_sun50i-h616-orangepi-zero2.dts 的 &spi1/display@0 节点 */
+display@0 {
+	status = "disabled";
+};
+```
+
+然后重新编译内核/DTB 和镜像，再刷入 SD 卡。这样启动后不会创建
+`fb_st7789v`，HDMI 会成为唯一的显示 framebuffer。由于 HDMI 此时通常会变成
+`fb0`，还要把 `boot.cmd` 中的：
+
+```text
+fbcon=map:1
+```
+
+改成：
+
+```text
+fbcon=map:0
+```
+
+再重新生成 `boot.scr`；否则 `fbcon=map:1` 仍然指向不存在的第二个 framebuffer，
+早期日志可能不会出现在 HDMI。
+
+只想临时关闭时，在运行中的系统执行：
+
+```bash
+echo spi0.0 > /sys/bus/spi/drivers/fb_st7789v/unbind
+```
+
+重新启用：
+
+```bash
+echo spi0.0 > /sys/bus/spi/drivers/fb_st7789v/bind
+```
+
+如果设备编号不是 `spi0.0`，先执行 `ls /sys/bus/spi/devices`。`unbind` 只卸载
+驱动，不会断开接到 3.3V 的背光 `BL/LED`；背光要熄灭，需要断开 BL 或单独增加
+背光 GPIO 控制。临时 `unbind` 后 framebuffer 编号也可能改变，重新切换前请再
+查看 `/proc/fb`，不要继续使用旧编号。
 
 ### 以太网、Wi-Fi 和蓝牙
 
