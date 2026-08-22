@@ -278,12 +278,11 @@ wifi_pwrseq: wifi-pwrseq {
 	vcc-ph-supply = <&reg_vcc3v3>;
 	vcc-pi-supply = <&reg_vcc3v3>;
 
-	/* Peutiy-Pi routes the ST7789 chip-select to header pin 27 (PH5).
-	 * Yuzuki's generic H616 DTSI names PH9 as its default SPI1 CS, so use
-	 * an explicit board pin group here instead of inheriting that mapping.
-	 */
-	spi1_cs_ph5_pin: spi1-cs-ph5-pin {
-		pins = "PH5";
+	/* The ST7789 only transmits data, so leave PH8 out of the SPI group and
+	 * use it as the panel's DC GPIO. Use PH9 as a GPIO chip-select instead of
+	 * native CS1; this is supported by the Yuzuki SPI controller reliably. */
+	spi1_tx_pins: spi1-tx-pins {
+		pins = "PH6", "PH7";
 		function = "spi1";
 	};
 };
@@ -305,7 +304,12 @@ wifi_pwrseq: wifi-pwrseq {
 &spi1 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&spi1_pins>, <&spi1_cs_ph5_pin>;
+	pinctrl-0 = <&spi1_tx_pins>;
+	/* The Yuzuki DMA request line is not wired correctly on this board.
+	 * Remove it so sun6i-spi registers in PIO mode; fbtft remains usable. */
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
+	cs-gpios = <&pio 7 9 GPIO_ACTIVE_LOW>; /* PH9 */
 
 	display@0 {
 		/*
@@ -317,12 +321,15 @@ wifi_pwrseq: wifi-pwrseq {
 		compatible = "sitronix,st7789v";
 		reg = <0>;
 		spi-max-frequency = <32000000>;
-		dc-gpios = <&pio 6 6 GPIO_ACTIVE_HIGH>;   /* PG6 */
-		reset-gpios = <&pio 6 7 GPIO_ACTIVE_LOW>; /* PG7 */
+		dc-gpios = <&pio 7 8 GPIO_ACTIVE_HIGH>;    /* PH8 */
+		reset-gpios = <&pio 7 10 GPIO_ACTIVE_LOW>; /* PH10 */
 		buswidth = <8>;
 		rotate = <90>;
 		width = <172>;
 		height = <320>;
+		/* 172x320 modules use a 240x320 ST7789 RAM window. With rotate=90,
+		 * the portrait X offset becomes a landscape Y offset. */
+		y-offset = <34>;
 		bgr;
 		status = "okay";
 	};

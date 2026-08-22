@@ -1006,7 +1006,8 @@
 		};
 
 		hdmi_phy: hdmi-phy@6010000 {
-			compatible = "allwinner,sun50i-h6-hdmi-phy";
+			compatible = "allwinner,sun50i-h616-hdmi-phy",
+				     "allwinner,sun50i-h6-hdmi-phy";
 			reg = <0x06010000 0x10000>;
 			clocks = <&ccu CLK_BUS_HDMI>, <&ccu CLK_HDMI_SLOW>;
 			clock-names = "bus", "mod";

@@ -29,14 +29,40 @@ H616 HDMI 控制器和 PHY 使用 Yuzuki 内核树中的原生
 `CONFIG_DRM_SUN8I_DW_HDMI=y` 编入内核。这样保持与已验证的 Yuzuki 镜像相同
 的显示初始化路径。
 
+### 让启动日志默认显示在 HDMI
+
+`boot.cmd` 已设置：
+
+```text
+video=HDMI-A-1:1920x1080@60D fbcon=map:1
+```
+
+在 ST7789 先注册为 `fb0`、HDMI 随后注册为 `fb1` 的正常顺序下，
+`fbcon=map:1` 会把内核 framebuffer console 指向 HDMI；串口仍由
+`console=ttyS0,115200` 同时保留。`video=` 用来强制 HDMI connector 上电并
+选择 1920×1080@60，避免没有 EDID 时 DRM framebuffer 延后出现。
+
+启动后请确认编号，不要盲目假定：
+
+```sh
+cat /proc/fb
+ls /sys/class/drm
+```
+
+如果 HDMI 实际不是 `fb1`，可在 U-Boot 命令行临时改为相应的 `fbcon=map:N`；
+如果 `/proc/fb` 完全没有 `sun4i-drmdrmfb`，这不是 console 映射问题，应先检查
+HDMI 的 DRM/CRTC 日志和连接器状态。
+
 ## ST7789 1.47 inch (172x320)
 
 这块屏的 DC 和 RST 是独立 GPIO，属于 4-wire、8-bit SPI 设备。DTS 采用
 `sitronix,st7789v` compatible，实际绑定到 staging fbtft 的
 `fb_st7789v` 驱动：
 
-- `dc-gpios = <&pio 6 6 GPIO_ACTIVE_HIGH>` (PG6)
-- `reset-gpios = <&pio 6 7 GPIO_ACTIVE_LOW>` (PG7)
+- SPI1 SCK/MOSI 使用 PH6/PH7，PH9 作为 GPIO 片选
+- 删除 Yuzuki DTSI 中不适用于本板的 SPI1 DMA 请求，控制器使用 PIO 模式
+- `dc-gpios = <&pio 7 8 GPIO_ACTIVE_HIGH>` (PH8)
+- `reset-gpios = <&pio 7 10 GPIO_ACTIVE_LOW>` (PH10)
 - `buswidth = <8>`、`width = <172>`、`height = <320>`、`rotate = <90>`
 - `CONFIG_FB_TFT=y` 与 `CONFIG_FB_TFT_ST7789V=y`
 

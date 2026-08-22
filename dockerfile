@@ -123,6 +123,8 @@ COPY ./main_sun50i-h616-orangepi-zero2.dts /linux-5.16.17/arch/arm64/boot/dts/al
 
 # ====== 内核配置（内建 Yuzuki DRM/DW HDMI 与 fbtft ST7789V） ======
 COPY ./yuzuki_kernel.fragment /tmp/yuzuki_kernel.fragment
+COPY ./linux_fbtft_offsets.patch /tmp/linux_fbtft_offsets.patch
+RUN cd ${KERNEL_DIR} && patch -p1 < /tmp/linux_fbtft_offsets.patch
 
 # ====== 编译内核 ======
 RUN cd ${KERNEL_DIR} && \

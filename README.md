@@ -29,6 +29,12 @@ Debian 镜像已包含 `con2fbmap` 和 `chvt`，并会在 HDMI DRM framebuffer
 注册后自动将 `tty1` 映射到 HDMI。下列命令用于手动切换或排障；请以 root
 身份执行。
 
+启动脚本默认带有 `video=HDMI-A-1:1920x1080@60D fbcon=map:1`。在本板的
+驱动探测顺序下，ST7789 是 `fb0`、HDMI DRM 是 `fb1`，因此内核启动日志和
+`tty0/tty1` 会优先显示在 HDMI；`console=ttyS0,115200` 仍会保留串口日志。
+如果 HDMI 没有接入或没有成功注册，系统会回退到已存在的 framebuffer，届时
+仍可通过下面的命令检查并手动切换。
+
 ```bash
 # 查看 framebuffer 编号（不要假定 HDMI 一定是 fb0）
 cat /proc/fb
@@ -85,19 +91,22 @@ RTL8723DS 的蓝牙部分取决于板上实际连接的 USB/UART HCI 总线：US
 `btattach`，再进入 `bluetoothctl`。镜像已包含 H4/3-wire/Realtek UART 支持，
 但设备树不会猜测未确认的 UART 引脚。
 
-### ST7789 接线 (Orange Pi Zero2 40pin 排针)
+### ST7789 接线
 
-| ST7789 | 排针号 | GPIO |
-|--------|--------|------|
-| GND | 6/20/25 等 | GND |
-| VCC | 1/17 | 3.3V |
-| SCL | 29 | PH6 (SPI1_CLK) |
-| SDA | 31 | PH7 (SPI1_MOSI) |
-| MISO | 33 | PH8 (SPI1_MISO，ST7789 通常不接) |
-| CS | 27 | PH5 (SPI1_CS0) |
-| DC | 22 | PG6 |
-| RST | 16 | PG7 |
-| BL | 3.3V 或 GPIO | 背光，可直接接 3.3V |
+该分支使用板上已引出的连续 PH 接口，不再依赖 PG6、PG7 或 PH5：
+
+| ST7789 | Peutiy-Pi GPIO | 说明 |
+|--------|----------------|------|
+| GND | GND | 电源地 |
+| VCC | 3.3V | 不要接 5V 逻辑电平 |
+| SCL/SCK | PH6 | SPI1_CLK |
+| SDA/MOSI | PH7 | SPI1_MOSI |
+| DC | PH8 | 命令/数据选择，必须连接 |
+| CS | PH9 | GPIO 片选，必须按本表连接 |
+| RST/RES | PH10 | 低电平复位 |
+| BL/LED | 3.3V | 背光常亮 |
+
+ST7789 不需要 MISO。接线和拔线前应关闭开发板电源。
 
 ![实体板子](./picture/4.jpg)
 ![PCB布线](./picture/5.png)
@@ -269,7 +278,7 @@ BROM → SPL → ATF (BL31) → U-Boot → Linux Kernel → RootFS
 U-Boot 启动参数 (`boot.cmd` → `boot.scr`)：
 
 ```
-bootargs: console=ttyS0,115200 console=tty0 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
+bootargs: console=ttyS0,115200 console=tty0 video=HDMI-A-1:1920x1080@60D fbcon=map:1 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init
 bootcmd:  fatload mmc 0:1 0x40200000 Image
           fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb
           booti 0x40200000 - 0x4fa00000
