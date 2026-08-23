@@ -20,8 +20,10 @@
 | HDMI | ✅ 支持 | Yuzuki H616 DE/TCON/DesignWare HDMI 显示链路 |
 | ST7789 1.47" LCD | ✅ 支持 | SPI1 4-wire（独立 DC/RST）+ fbtft，172×320 |
 
-HDMI 登录界面和 USB-A Host 键盘已在 Peutiy-Pi 实板上验证。USB-C 端口保留为
-peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
+当前分支 `build/debian-only-st7789-hdmi-sync` 的 Debian 镜像默认把内核启动日志、
+Debian `tty1` 登录提示和登录后的终端放在 ST7789 上；HDMI 同时初始化，可用
+`con2fbmap` 把 `tty1` 临时切到 HDMI。USB-A Host 键盘已在 Peutiy-Pi 实板上验证。
+USB-C 端口保留为 peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
 
 #### 当前显示逻辑
 
@@ -38,6 +40,10 @@ peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
 
 这套配置故意不让 HDMI 在启动时抢占 tty1。`con2fbmap` 只影响 Linux tty，不会
 切换已经运行的 X11/Wayland 桌面。
+
+`chvt 1` 的含义是切换到 Linux 的虚拟终端 1（`tty1`）；它不是 HDMI 专用命令。
+因此切屏时总是先找到 framebuffer 编号，再执行 `con2fbmap 1 <编号>` 和
+`chvt 1`。framebuffer 编号由驱动探测顺序决定，不能永久假定 HDMI 一定是 `fb1`。
 
 #### 确认当前状态
 
@@ -83,6 +89,45 @@ chvt 1
 systemctl restart peutiy-hdmi-console.service
 ```
 
+#### 让内核启动日志改为显示在 HDMI
+
+默认 `boot.cmd` 使用 `fbcon=map:0`，即把 framebuffer console 指向 ST7789 的
+`fb0`。在当前正常探测顺序（ST7789=`fb0`、HDMI=`fb1`）下，想让内核日志显示
+在 HDMI，可把 `boot.cmd` 中的参数改为 `fbcon=map:1`，然后重新生成启动脚本：
+
+```bash
+perl -pi -e 's/fbcon=map:0/fbcon=map:1/' boot.cmd
+DEBIAN_ONLY=1 sh build_all.sh "$PWD/out-debian-hdmi-console" 1880
+```
+
+构建容器会自动用 `mkimage` 把 `boot.cmd` 编译成新的 `boot.scr`，再把它放进
+镜像的 FAT 启动分区。串口
+日志不会受影响，因为 `console=ttyS0,115200` 仍然存在。进入 Debian 后，已启用的
+`peutiy-hdmi-console.service` 会按本分支设计把 `tty1` 再切回 ST7789；如果希望
+登录提示也留在 HDMI，执行：
+
+```bash
+systemctl disable --now peutiy-hdmi-console.service
+HDMI_FB=$(awk '$2 ~ /drm/ { print $1; exit }' /proc/fb)
+test -n "$HDMI_FB" || { echo "HDMI framebuffer not found"; exit 1; }
+con2fbmap 1 "$HDMI_FB"
+chvt 1
+```
+
+只想临时测试一次而不改 SD 卡，可在 U-Boot 中断自动启动后手动加载内核，使用
+同一组 `bootargs`，把 `fbcon=map:0` 改成 `fbcon=map:1`：
+
+```text
+setenv bootargs 'console=ttyS0,115200 console=tty0 video=HDMI-A-1:1920x1080@60D fbcon=map:1 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait rw init=/sbin/init debug panic=30'
+fatload mmc 0:1 0x40200000 Image
+fatload mmc 0:1 0x4fa00000 sun50i-h616-orangepi-zero2.dtb
+booti 0x40200000 - 0x4fa00000
+```
+
+标准 `fbcon` 是把 console 选到一个 framebuffer；它不会自动把同一份内核日志
+复制到两个屏幕。需要两个屏幕同时出现日志时，要额外做 framebuffer mirror/copy，
+这不属于当前默认方案。
+
 注意：`fbcon=map:0` 依赖 ST7789 在内核注册为 `fb0`。如果小屏驱动没有注册，
 早期 printk 仍可通过串口确认；系统进入用户空间后，服务会等待 ST7789 出现。
 
@@ -90,6 +135,9 @@ systemctl restart peutiy-hdmi-console.service
 与 framebuffer 应用。任何支持 fbdev 的非桌面程序都可以直接打开
 `/dev/fb${ST7789_FB}`；`fbtest` 安装后可用 `fbtest --fb /dev/fb${ST7789_FB}`
 测试。
+
+想了解这套适配是怎样从接线、设备树和内核配置一步步定位出来的，参见
+[ST7789 小屏适配学习笔记](docs/st7789-adaptation-notes.md)。
 
 ST7789 也可以运行图形桌面，但需另行在 Buildroot 中加入 Xorg fbdev 或
 Weston 的 fbdev 后端，并将其显式指向该 framebuffer。它不会自动与 HDMI
@@ -196,20 +244,37 @@ ST7789 不需要 MISO。接线和拔线前应关闭开发板电源。
 | U-Boot | 2024.01 | Bootloader, orangepi_zero2_defconfig |
 | Linux Kernel | Yuzuki H616 mainline 5.16.17 | 原生 H616 HDMI PHY 与 fbtft ST7789V |
 | GCC 工具链 | ARM 10.3 (aarch64-none-linux-gnu) | 替代已下架的 Linaro 7.5 |
-| Buildroot | 2022.02.5 | 根文件系统 + 编译无线驱动后重编内核 |
-| Debian | Bullseye arm64 | debootstrap 引导，备选 rootfs |
+| Buildroot | 2022.02.5 | 可选的另一套 rootfs；Debian-only 模式会跳过 |
+| Debian | Bullseye arm64 | 当前推荐 rootfs，包含 systemd、网络、Wi-Fi 和蓝牙工具 |
 
 ## 快速开始
 
-### 方式一：一键构建 + 出 SD 镜像（推荐）
+### 方式一：只编译 Debian 镜像（当前推荐）
 
 ```bash
 git clone https://github.com/anglersking/Peutiy-Pi.git
 cd Peutiy-Pi
+git switch build/debian-only-st7789-hdmi-sync
 
-# 一条命令：编译 + 提取产物 + 制作 SD img
-# 产物自动输出到 /mnt/nvme0n1-4/out/
-sh build_all.sh /mnt/nvme0n1-4/out
+# 编译 U-Boot、Linux 5.16.17、DTB、内核模块和 Debian Bullseye，
+# 跳过 Buildroot，并自动制作可启动的 Debian SD 镜像。
+# 1880 MiB 适合本项目的 Debian 镜像；第二个参数可按卡容量调整。
+DEBIAN_ONLY=1 sh build_all.sh "$PWD/out-debian" 1880
+```
+
+成功后最重要的文件是：
+
+```text
+out-debian/sdcard_debian.img
+```
+
+这个模式仍然会编译内核、U-Boot 和设备树，不是只打包 rootfs。它只是不下载、
+不编译和不导出 Buildroot，因此更适合当前 Debian 测试流程。
+
+如果需要同时生成 Buildroot 镜像，去掉 `DEBIAN_ONLY=1` 即可：
+
+```bash
+sh build_all.sh "$PWD/out-all" 1880
 ```
 
 ### macOS（Intel 与 Apple Silicon）
@@ -217,7 +282,7 @@ sh build_all.sh /mnt/nvme0n1-4/out
 安装并启动 Docker Desktop 后，直接运行：
 
 ```bash
-sh build_all.sh
+DEBIAN_ONLY=1 sh build_all.sh "$PWD/out-debian" 1880
 ```
 
 脚本在 macOS 上自动使用 `linux/amd64` 容器：Intel Mac 原生执行，Apple
@@ -226,11 +291,13 @@ Silicon 通过 Docker Desktop 的模拟执行，因此构建会较慢但与 Linu
 Linux 挂载接口。macOS 的默认输出目录为当前仓库下的 `out/`，也可以将自定义
 目录作为第一个参数、镜像大小（MiB）作为第二个参数传入。
 
-### 方式二：只编译（产物在容器内）
+### 方式二：只执行 Docker 编译阶段（高级用法）
 
 ```bash
-docker build --network=host -t h616_core_build . 2>&1 | tee build.log
-# 产物在容器 /out/ 下，需要手动 docker cp 出来
+docker build --platform=linux/amd64 \
+  --build-arg BUILD_DEBIAN_ONLY=1 \
+  --network=host -t h616_core_build . 2>&1 | tee build.log
+# 编译产物位于容器 /out/；推荐使用上面的 build_all.sh 自动制作 SD 镜像。
 ```
 
 ### 提取构建产物 (方式二后续)
@@ -256,34 +323,51 @@ out/
 ├── bootscr/boot.scr                        # U-Boot 启动脚本
 ├── uboot/u-boot-sunxi-with-spl.bin         # U-Boot + SPL 镜像
 ├── modules/lib/modules/                    # 内核模块目录
-├── buildroot/
-│   ├── rootfs.ext2                         # Buildroot 根文件系统 (ext2)
-│   └── rootfs.tar                          # Buildroot 根文件系统 (tar)
 ├── debian-rootfs.tar                       # Debian Bullseye arm64 rootfs
-├── sdcard_buildroot.img                    # ✅ Buildroot 完整 SD 卡镜像 (1024M, 双分区, 可直接刷)
-└── sdcard_debian.img                       # ✅ Debian 完整 SD 卡镜像 (1024M, 双分区, 可直接刷)
+└── sdcard_debian.img                       # ✅ Debian 完整 SD 卡镜像 (双分区, 可直接刷)
 ```
+
+如果没有设置 `DEBIAN_ONLY=1`，还会额外出现 `buildroot/` 和
+`sdcard_buildroot.img`；两种镜像共用同一份内核、DTB 和 U-Boot。
 
 每个 `.img` 文件结构：
 
 ```
 分区1 (FAT32, 128M):  /Image  /sun50i-h616-orangepi-zero2.dtb  /boot.scr
-分区2 (ext4,  ~380M):  rootfs + /lib/modules/
+分区2 (ext4,  剩余空间): rootfs + /lib/modules/
 8KB 偏移:              U-Boot SPL
 ```
 
 ### 4. 直接刷入 SD 卡
 
 ```bash
-# ⚠️ 请确认设备！/dev/sdX 是你的 SD 卡
-# 用 lsblk 确认你的 SD 卡设备名
+# ⚠️ 请确认设备！必须写入整张 SD 卡（/dev/sdX），不要写入 /dev/sdX1。
+# Linux 用 lsblk，macOS 用 diskutil list 确认设备。
 
-# 刷 Buildroot 版本：
-dd if=out/sdcard_buildroot.img of=/dev/sdX bs=4M status=progress
+# Linux：
+sudo umount /dev/sdX1 /dev/sdX2 2>/dev/null || true
+sudo dd if=out-debian/sdcard_debian.img of=/dev/sdX bs=4M status=progress conv=fsync
+sync
 
-# 刷 Debian 版本：
-dd if=out/sdcard_debian.img of=/dev/sdX bs=4M status=progress
+# macOS：先执行 diskutil list 找到 N，再执行：
+diskutil unmountDisk /dev/diskN
+sudo dd if="$PWD/out-debian/sdcard_debian.img" of=/dev/rdiskN bs=4m status=progress
+sync
+diskutil eject /dev/diskN
 ```
+
+烧录前后建议校验镜像：
+
+```bash
+# macOS
+shasum -a 256 out-debian/sdcard_debian.img
+
+# Linux
+sha256sum out-debian/sdcard_debian.img
+```
+
+刷卡完成后，把 SD 卡插入开发板再上电。默认登录账号是 `peutiy` / `peutiy`，
+root 诊断账号是 `root` / `peutiy`；联网后请立即修改密码。
 
 刷完后插卡到 Orange Pi Zero2 上电即可启动。
 
@@ -311,7 +395,7 @@ w
 EOF
 
 # 3. 写入 U-Boot 到 8KB 偏移
-dd if=out/uboot/u-boot-sunxi-with-spl.bin of=/dev/$sdcard bs=8K seek=1
+dd if=out-debian/uboot/u-boot-sunxi-with-spl.bin of=/dev/$sdcard bs=8K seek=1
 
 # 4. 格式化
 mkfs.fat /dev/${sdcard}1
@@ -319,23 +403,23 @@ mkfs.ext4 /dev/${sdcard}2
 
 # 5. 写入 boot 分区
 mount /dev/${sdcard}1 /mnt/boot/
-cp out/image/Image /mnt/boot/
-cp out/dtb/sun50i-h616-orangepi-zero2.dtb /mnt/boot/
-cp out/bootscr/boot.scr /mnt/boot/
+cp out-debian/image/Image /mnt/boot/
+cp out-debian/dtb/sun50i-h616-orangepi-zero2.dtb /mnt/boot/
+cp out-debian/bootscr/boot.scr /mnt/boot/
 umount /mnt/boot
 
 # 6. 写入 rootfs 分区
 
 # Buildroot 版:
 mount /dev/${sdcard}2 /mnt/rootfs/
-tar xf out/buildroot/rootfs.tar -C /mnt/rootfs
-cp -a out/modules/lib/. /mnt/rootfs/lib/
+tar xf out-all/buildroot/rootfs.tar -C /mnt/rootfs
+cp -a out-all/modules/lib/. /mnt/rootfs/lib/
 umount /mnt/rootfs
 
-# Debian 版:
+# Debian 版（当前推荐）:
 mount /dev/${sdcard}2 /mnt/rootfs/
-tar xf out/debian-rootfs.tar -C /mnt/rootfs
-cp -a out/modules/lib/. /mnt/rootfs/lib/
+tar xf out-debian/debian-rootfs.tar -C /mnt/rootfs
+cp -a out-debian/modules/lib/. /mnt/rootfs/lib/
 umount /mnt/rootfs
 ```
 
@@ -394,87 +478,29 @@ fbtest --fb "/dev/fb${ST7789_FB}"
 ├── build.sh                       # Docker 构建脚本
 ├── auto_write.sh                  # SD 卡自动烧录脚本
 ├── fixbug/                        # 驱动修复补丁
+├── docs/st7789-adaptation-notes.md # ST7789 适配学习笔记
 ├── picture/                       # 项目图片
 └── sdcard_make/                   # SD 卡制作脚本
 ```
 
 ## SD 卡镜像制作
 
-### 自动化制作（容器内 `shuaxie.sh`）
+推荐始终使用 `build_all.sh`：它会在 Linux 容器内完成分区、FAT32/ext4 格式化、
+U-Boot 写入、boot 文件复制和 Debian rootfs 写入。这样 macOS 不需要提供
+`losetup` 或 Linux 挂载接口，也不会把宿主机的 `/dev` 设备节点错误地打进 rootfs。
 
-镜像在容器构建时自动生成，位于 `/out/image/`。结构：
+如果确实需要手动制作，分区布局必须保持一致：
 
-```
-分区1 (FAT32, 128M):  /Image  /sun50i-h616-orangepi-zero2.dtb  /boot.scr
-分区2 (ext4):          Buildroot rootfs + /lib/modules/
-8KB 偏移:              U-Boot SPL
-```
-
-### 手动制作（macOS / Linux）
-
-```bash
-# 1. 准备空镜像
-IMG=sdcard_buildroot.img
-dd if=/dev/zero of=$IMG bs=1M count=2048
-
-# 2. 分区 (MBR, 双分区)
-#    分区1: 128MB FAT32 (起始 sector 40960 = 20MB, 留给 U-Boot)
-#    分区2: ext4 (剩余空间)
-fdisk $IMG << EOF
-o
-n
-p
-1
-40960
-+128M
-n
-p
-2
-
-
-w
-EOF
-
-# 3. 写入 U-Boot SPL (8KB 偏移)
-dd if=u-boot-sunxi-with-spl.bin of=$IMG bs=8K seek=1 conv=notrunc
-
-# 4. 创建 loop 设备并格式化 (macOS)
-# 略 — 推荐用 Linux 或容器内工具完成
-
-# ----- Linux 上继续 -----
-LOOP=$(losetup -Pf --show $IMG)
-mkfs.fat -F 32 ${LOOP}p1
-mkfs.ext4 ${LOOP}p2
-
-# 5. 写入 boot 分区
-mount ${LOOP}p1 /mnt/boot
-cp Image /mnt/boot/
-cp sun50i-h616-orangepi-zero2.dtb /mnt/boot/
-cp boot.scr /mnt/boot/
-umount /mnt/boot
-
-# 6. 写入 rootfs
-mount ${LOOP}p2 /mnt/rootfs
-tar xf rootfs.tar -C /mnt/rootfs
-mkdir -p /mnt/rootfs/lib/modules
-cp -r modules/lib/modules/* /mnt/rootfs/lib/modules/
-umount /mnt/rootfs
-
-losetup -d $LOOP
+```text
+MBR 分区表
+分区 1：FAT32，起始 sector 40960（20 MiB），大小 128 MiB
+分区 2：ext4，从分区 1 结束处开始，占剩余空间
+U-Boot SPL：整张卡偏移 8 KiB（sector 16）
 ```
 
-### 烧录到 SD 卡
-
-```bash
-# ⚠️ 用 diskutil list (macOS) 或 lsblk (Linux) 确认 SD 卡设备！
-
-# macOS (用 rdisk 更快):
- diskutil unmountDisk /dev/diskX
- sudo dd if=sdcard_buildroot.img of=/dev/rdiskX bs=4m status=progress
-
-# Linux:
- sudo dd if=sdcard_buildroot.img of=/dev/sdX bs=4M status=progress conv=fsync
-```
+手动写入 Debian 时，把 `debian-rootfs.tar` 解到分区 2，再把
+`modules/lib/.` 复制到分区 2 的 `lib/`；分区 1 只需要 `Image`、DTB 和
+`boot.scr`。除非在调试镜像制作脚本，否则不建议手工替代自动化流程。
 
 ### 镜像适配小容量 SD 卡
 
@@ -494,10 +520,10 @@ dumpe2fs -h p2_partition.img 2>/dev/null | grep -E 'Block count|Free blocks|Bloc
 
 ## 注意事项
 
-- **内核来源**: 使用 Linux 6.0.19；构建时以本仓库的 `sun50i-h616-yuzuki.dtsi` 覆盖内核 DTSI，提供 H616 的 display engine、TCON 和 HDMI 节点。
+- **内核来源**: 使用 Yuzuki H616 显示改动叠加的 Linux 5.16.17；构建时将板级 DTS 编译为 `sun50i-h616-orangepi-zero2.dtb`，提供 H616 的 display engine、TCON、HDMI 和 ST7789 节点。
 - **HDMI compatible**: HDMI 控制器复用 `allwinner,sun50i-h6-dw-hdmi`，PHY 使用回移的 `allwinner,sun50i-h616-hdmi-phy` 参数表（H6 初始化流程），由内建的 `CONFIG_DRM_SUN8I_DW_HDMI=y` 驱动绑定。
 - **ST7789 驱动选择**: 这块屏是带 DC/RST 的 8-bit/4-wire SPI 模块，必须使用 `CONFIG_FB_TFT_ST7789V=y`、`buswidth = <8>` 与 `rotate`；不能使用只支持 9-bit SPI、240×320 的 DRM `panel-sitronix-st7789v` 驱动。
 - **工具链**: ARM 官方 10.3，前缀 `aarch64-none-linux-gnu-`
 - **编译并行度**: 默认按容器可见 CPU 数全核构建；Linux 使用标准 Make jobserver，macOS 通过独立作业池兼容 Docker Desktop。
-- **rootfs 大小**: Buildroot ext2 分区改为 256M (128M 不够放下 sshd 等组件)
+- **rootfs 大小**: Debian 镜像默认按 1880 MiB 制作；如果使用更小的卡，需要先确认卡的实际扇区数再缩小 ext4 和分区。
 - **Buildroot 构建源**: 已配置清华 tuna 镜像源加速国内下载
