@@ -213,7 +213,8 @@ WIFI_PASSWORD='你的WiFi密码'
 modprobe 8723ds 2>/dev/null || true
 rfkill unblock wifi
 ip link set wlan0 up
-wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" | \
+  sed '/^[[:space:]]*#psk=/d' > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 wpa_supplicant -B -D nl80211 -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 dhclient -v wlan0
 ip -4 addr show wlan0
