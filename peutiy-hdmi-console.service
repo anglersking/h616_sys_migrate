@@ -1,0 +1,9 @@
+[Unit]
+Description=Keep ST7789 framebuffer console on tty1
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/peutiy-hdmi-console
+
+[Install]
+WantedBy=multi-user.target

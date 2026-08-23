@@ -1,184 +1,107 @@
-# HDMI 显示修复指南
+# HDMI 与 ST7789 显示适配
 
-## 问题
+本分支使用 Linux 5.16.17，并叠加 `dumtux/Allwinner-H616` 中的 H616 显示
+相关目录。这样保留 Yuzuki 的 display engine、TCON、DesignWare HDMI 和
+HDMI PHY 设备树与驱动；`main_sun50i-h616-orangepi-zero2.dts` 只负责启用
+板级连接、供电、网络和 ST7789。不要再用 6.0.19 的兼容 DTSI 或 HDMI PHY
+回移补丁覆盖它。
 
-Buildroot 镜像刷入 SD 卡后可以正常启动（串口可用），但 **HDMI 无显示**。
+## HDMI
 
-### 症状
+显示链路为：
 
-```bash
-ls /dev/fb*          # 无 framebuffer 设备
-ls /sys/class/drm/   # 无 DRM 设备
-dmesg | grep -i sun8i # 无 sun8i-dw-hdmi/sun8i-mixer 驱动加载日志
+```
+display-engine (de) -> mixer0 -> tcon_top/tcon_tv -> HDMI -> connector
 ```
 
-### 根因
+以下配置必须同时存在：
 
-Dockerfile 的编译流程存在**内核覆盖问题**，最终产出的内核并非来自含 HDMI 驱动的 `apritzel/linux` (`h616-v13`) 分支：
+- DTS 中 `&de`、`&hdmi`、`&hdmi_audio` 和 `&hdmi_phy` 的 `status = "okay"`
+- HDMI 输出 endpoint 与 `hdmi-connector` 双向连接
+- `hvcc-supply = <&reg_hdmi_1v8>`，为 HDMI PHY 提供 1.8 V。该固定稳压器
+  表示 U-Boot 已开启的板级 HDMI 供电；不能引用 AXP305 RSB 提供的
+  `reg_bldo1`，因为该 PMIC 在此内核上注册失败会使 HDMI 永久延迟探测
+- 内核配置中的 `CONFIG_DRM_SUN4I=y`、`CONFIG_DRM_SUN8I_DW_HDMI=y`、
+  `CONFIG_DRM_SUN8I_MIXER=y` 与 `CONFIG_DRM_SUN8I_TCON_TOP=y`
 
-```dockerfile
-# Step 1: 从 apritzel/linux (h616-v13) 克隆内核（含完整 H616 HDMI DTS + 驱动）
-RUN git clone -b h616-v13 https://github.com/apritzel/linux
+H616 HDMI 控制器和 PHY 使用 Yuzuki 内核树中的原生
+`allwinner,sun50i-h616-dw-hdmi` 与 `allwinner,sun50i-h616-hdmi-phy`，由
+`CONFIG_DRM_SUN8I_DW_HDMI=y` 编入内核。这样保持与已验证的 Yuzuki 镜像相同
+的显示初始化路径。
 
-# Step 2: 第一次编译 apritzel 内核（含 HDMI）
-RUN cd linux/ && make ... Image dtbs modules
+### 让启动日志默认显示在 ST7789
 
-# ❌ Step 3: clean 后重新 defconfig，再用主线 6.0.19 的 .config 覆盖
-RUN cd linux/ && make ... clean
-RUN cd linux/ && make ... defconfig          # ← 回退到默认配置
-COPY ./linux_main_menuconfig /linux/.config  # ← 用主线 6.0.19 的配置覆盖！
-RUN cd linux/ && make ... Image dtbs modules # ← 最终产物是主线配置+主线DTS
+`boot.cmd` 已设置：
 
-# ❌ Step 4: entrypoint.sh 拷贝的是 /linux-6.0.19/（旧目录名）
+```text
+video=HDMI-A-1:1920x1080@60D fbcon=map:0
 ```
 
-**结果：即使 apritzel 内核驱动已编译为模块，最终 entrypoint.sh 拷贝的是 `/linux-6.0.19/` 路径下的主线内核 Image + DTB，这个 DTB (`sun50i-h616-orangepi-zero2.dts`) 中没有 HDMI 节点。**
+在 ST7789 先注册为 `fb0`、HDMI 随后注册为 `fb1` 的正常顺序下，
+`fbcon=map:0` 会把内核 framebuffer console 指向 ST7789；串口仍由
+`console=ttyS0,115200` 同时保留。`video=` 仍会初始化 HDMI connector 并
+选择 1920×1080@60，避免没有 EDID 时 DRM framebuffer 延后出现。Debian 用户空间
+的 `peutiy-hdmi-console.service` 会把 `tty1` 保持在 ST7789。
 
----
+启动后请确认编号，不要盲目假定：
 
-## 修复方案
-
-### 修改 1: 修复 entrypoint.sh
-
-`entrypoint.sh` 必须拷贝 `/linux/`（apritzel 内核）的产物，而不是旧的 `/linux-6.0.19/`：
-
-```bash
-#!/bin/bash
-set -e
-
-# === 这里之前是 /linux-6.0.19，需要改成 /linux === 
-
-# Buildroot rootfs
-mkdir -p /out/rootfs
-cp -r /buildroot-2022.02.5/output/images/rootfs.tar /out/rootfs/ 2>/dev/null || true
-
-# Buildroot ext2 rootfs
-mkdir -p /out/buildroot
-cp /buildroot-2022.02.5/output/images/rootfs.ext2 /out/buildroot/ 2>/dev/null || true
-cp /buildroot-2022.02.5/output/images/rootfs.tar /out/buildroot/ 2>/dev/null || true
-
-# U-Boot
-mkdir -p /out/uboot
-cp /u-boot-2024.01/u-boot-sunxi-with-spl.bin /out/uboot/
-
-# Kernel Image → 从 /linux/ (apritzel 内核) 拷贝
-mkdir -p /out/image
-cp /linux/arch/arm64/boot/Image /out/image/
-
-# DTB → 从 /linux/ (apritzel 内核) 拷贝（含 HDMI 节点）
-mkdir -p /out/dtb
-cp /linux/arch/arm64/boot/dts/allwinner/sun50i-h616-orangepi-zero2.dtb /out/dtb/
-
-# boot.scr
-mkdir -p /out/bootscr
-cp /linux/boot.scr /out/bootscr/
-
-# 内核模块
-mkdir -p /out/modules
-cp -r /linux/MINSTALL/lib /out/modules/ 2>/dev/null || true
-
-echo "=== All artifacts extracted ==="
+```sh
+cat /proc/fb
+ls /sys/class/drm
 ```
 
-### 修改 2: 修复 Dockerfile 的编译流程
+如果 ST7789 实际不是 `fb0`，可在 U-Boot 命令行临时改为相应的 `fbcon=map:N`；
+如果 `/proc/fb` 完全没有 `sun4i-drmdrmfb`，这不是 console 映射问题，应先检查
+HDMI 的 DRM/CRTC 日志和连接器状态。
 
-用 `main_sun50i-h616-orangepi-zero2.dts`（仓库中已包含 SPI/ST7789 节点）替换 apritzel 内核的 DTS，避免 clean 后再 defconfig：
+## ST7789 1.47 inch (172x320)
 
-```dockerfile
-# 1) 克隆 apritzel 内核（h616-v13 含 H616 HDMI DTS 节点和驱动）
-RUN git clone -b h616-v13 https://github.com/apritzel/linux
+这块屏的 DC 和 RST 是独立 GPIO，属于 4-wire、8-bit SPI 设备。DTS 采用
+`sitronix,st7789v` compatible，实际绑定到 staging fbtft 的
+`fb_st7789v` 驱动：
 
-# 2) 复制项目自定义 DTS（含 ST7789 SPI 面板 + 其他硬件描述）
-COPY ./main_sun50i-h616-orangepi-zero2.dts /linux/arch/arm64/boot/dts/allwinner/
+- SPI1 SCK/MOSI 使用 PH6/PH7，PH9 作为 GPIO 片选
+- 删除 Yuzuki DTSI 中不适用于本板的 SPI1 DMA 请求，控制器使用 PIO 模式
+- `dc-gpios = <&pio 7 8 GPIO_ACTIVE_HIGH>` (PH8)
+- `reset-gpios = <&pio 7 10 GPIO_ACTIVE_LOW>` (PH10)
+- `buswidth = <8>`、`width = <172>`、`height = <320>`、`rotate = <90>`
+- `CONFIG_FB_TFT=y` 与 `CONFIG_FB_TFT_ST7789V=y`
 
-# 3) 复制无线网卡驱动
-RUN cp -r /rtl8723ds /linux/drivers/net/wireless/realtek/rtl8723ds
-RUN cp -r /Xradio-XR829 /linux/drivers/net/wireless/realtek/xr829
-COPY ./rtl8Kconfig /linux/drivers/net/wireless/realtek/rtl8723ds/Kconfig
-COPY ./realtek_Kconfig /linux/drivers/net/wireless/realtek/Kconfig
-COPY ./linux_main_realtek_Makefile /linux/drivers/net/wireless/realtek/Makefile
+不要启用 DRM 的 `CONFIG_DRM_PANEL_SITRONIX_ST7789V`。它的驱动使用
+9-bit SPI 传送命令/数据，并固定为 240x320；在这块带 DC/RST 的 172x320
+模块上会因绑定方式和供电属性不符而无法正常 probe。
 
-# 4) 编译 apritzel 内核（不要 clean 后 defconfig）
-#    用自定义的 .config（已含 HDMI 驱动）
-COPY ./linux_main_menuconfig /linux/.config
-RUN cd /linux && make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- -j2 Image
-RUN cd /linux && make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- -j2 dtbs
-RUN cd /linux && make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- -j2 modules
+## 上板验证
 
-# 5) 安装模块
-RUN cd /linux && mkdir -p MINSTALL HINSTALL
-RUN cd /linux && make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- \
-    INSTALL_MOD_PATH=./MINSTALL modules modules_install
-RUN cd /linux && make ARCH=arm64 INSTALL_HDR_PATH=HINSTALL headers_install
-
-# 6) 生成 boot.scr
-COPY ./boot.cmd /linux/boot.cmd
-RUN cd /linux && mkimage -C none -A arm64 -T script -d boot.cmd boot.scr
-```
-
-### 修改 3: 确保 DTS 有 HDMI 节点
-
-`main_sun50i-h616-orangepi-zero2.dts` 当前缺少 HDMI 节点。需要添加：
-
-```dts
-// 在根节点下添加 HDMI 输出
-&hdmi {
-	hvcc-supply = <&reg_bldo1>;
-	status = "okay";
-};
-
-&de {
-	status = "okay";
-};
-
-&hdmi_phy {
-	status = "okay";
-};
-
-&hdmi_out {
-	hdmi_out_con: endpoint {
-		remote-endpoint = <&hdmi_con_in>;
-	};
-};
-```
-
-> 注意：以上绑定名称来自 `apritzel/linux` h616-v13 分支的 `sun50i-h616.dtsi`，具体标签可能略有不同，编译时如报错需调整。
-
----
-
-## 快速验证（镜像刷入后）
-
-SD 卡启动后，在串口终端运行：
-
-```bash
-# HDMI 驱动是否加载
-dmesg | grep -iE 'hdmi|sun8i-dw|mixer|tcon'
-
-# DRM 设备是否存在
+```sh
+# HDMI DRM 链路
+dmesg | grep -iE 'drm|hdmi|mixer|tcon'
 ls /sys/class/drm/
+cat /sys/class/drm/card0-HDMI-A-1/status
 
-# framebuffer 是否创建
-ls /dev/fb*
+# SPI 和 ST7789 framebuffer
+dmesg | grep -iE 'spi|fbtft|st7789'
+cat /proc/fb
+
+# 切到 ST7789 的 tty console（按驱动名获取实际 framebuffer 编号）
+ST7789_FB=$(awk '$2 ~ /(fb_st7789v|st7789)/ { print $1; exit }' /proc/fb)
+test -n "$ST7789_FB" || { echo "ST7789 framebuffer not found"; exit 1; }
+con2fbmap 1 "$ST7789_FB"
+chvt 1
+
+# 如已安装 fbtest，可直接测试该 framebuffer
+fbtest --fb "/dev/fb${ST7789_FB}"
 ```
 
-正常输出应有类似：
-```
-sun8i-dw-hdmi ... bound
-sun8i-mixer ... bound
-/dev/fb0
-```
+如 HDMI connector 编号不是 `card0-HDMI-A-1`，请从 `ls /sys/class/drm/`
+的实际输出中选择对应项。
 
----
+## 图形桌面
 
-## 相关文件
+当前 Buildroot 配置没有选择 X11、Wayland 或 Weston，所以默认镜像不会启动
+桌面。ST7789 仍可作为图形桌面的显示目标：启用 Xorg 的 fbdev 驱动或 Weston
+fbdev 后端，并让该图形服务器打开 `/dev/fb${ST7789_FB}`。
 
-| 文件 | 修改内容 |
-|------|---------|
-| `entrypoint.sh` | `/linux-6.0.19/` → `/linux/` |
-| `dockerfile` | 移除第二次 clean+defconfig 编译（或确保最终产物来自 apritzel 内核） |
-| `main_sun50i-h616-orangepi-zero2.dts` | 添加 HDMI/de/tcon 节点 |
-| `linux_main_menuconfig` | 确认 `CONFIG_DRM_SUN8I_DW_HDMI=y`, `CONFIG_DRM_SUN8I_MIXER=y` 等已开启 |
-
----
-
-*生成时间: 2026-08-05*
+这与 `con2fbmap` 无关：后者只切换 tty console。HDMI 与 ST7789 是两个独立
+framebuffer，不会自动镜像；如需镜像，需要单独的 framebuffer-copy 程序。
+172×320 的 SPI 面板适合简单控制 UI，不适合动画、视频或完整高刷新率桌面。

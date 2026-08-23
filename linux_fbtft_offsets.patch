@@ -1,0 +1,34 @@
+--- a/drivers/staging/fbtft/fbtft.h
++++ b/drivers/staging/fbtft/fbtft.h
+@@ -140,6 +140,8 @@ struct fbtft_platform_data {
+ 	u8 startbyte;
+ 	char *gamma;
+ 	void *extra;
++	u32 x_offset;
++	u32 y_offset;
+ };
+ 
+ /**
+--- a/drivers/staging/fbtft/fbtft-core.c
++++ b/drivers/staging/fbtft/fbtft-core.c
+@@ -205,9 +205,14 @@ static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
+ {
++	xs += par->pdata->x_offset;
++	xe += par->pdata->x_offset;
++	ys += par->pdata->y_offset;
++	ye += par->pdata->y_offset;
++
+ 	write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS,
+ 		  (xs >> 8) & 0xFF, xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
+ 
+	write_reg(par, MIPI_DCS_SET_PAGE_ADDRESS,
+		  (ys >> 8) & 0xFF, ys & 0xFF, (ye >> 8) & 0xFF, ye & 0xFF);
+ 
+ 	write_reg(par, MIPI_DCS_WRITE_MEMORY_START);
+ }
+@@ -1168,3 +1168,5 @@ static struct fbtft_platform_data *fbtft_properties_read(struct device *dev)
+ 	pdata->txbuflen = fbtft_property_value(dev, "txbuflen");
+	pdata->startbyte = fbtft_property_value(dev, "startbyte");
++	pdata->x_offset = fbtft_property_value(dev, "x-offset");
++	pdata->y_offset = fbtft_property_value(dev, "y-offset");
+	device_property_read_string(dev, "gamma", (const char **)&pdata->gamma);
