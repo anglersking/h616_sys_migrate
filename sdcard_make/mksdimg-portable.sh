@@ -84,7 +84,11 @@ EOF
     echo "=== $name OK ==="
 }
 
-make_img sdcard_buildroot.img "$OUTDIR/buildroot/rootfs.tar" tar
+if [ -f "$OUTDIR/buildroot/rootfs.tar" ]; then
+    make_img sdcard_buildroot.img "$OUTDIR/buildroot/rootfs.tar" tar
+else
+    echo "=== Skipping sdcard_buildroot.img (no Buildroot rootfs) ==="
+fi
 
 if [ -f "$OUTDIR/debian-rootfs.tar" ]; then
     make_img sdcard_debian.img "$OUTDIR/debian-rootfs.tar" tar

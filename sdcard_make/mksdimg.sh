@@ -76,7 +76,11 @@ EOF
 }
 
 # --- Buildroot SD 镜像 ---
-make_img sdcard_buildroot.img buildroot/rootfs.tar tar
+if [ -f buildroot/rootfs.tar ]; then
+    make_img sdcard_buildroot.img buildroot/rootfs.tar tar
+else
+    echo "=== Skipping sdcard_buildroot.img (no Buildroot rootfs) ==="
+fi
 
 # --- Debian SD 镜像 ---
 if [ -f debian-rootfs.tar ]; then

@@ -148,48 +148,59 @@ RUN grep -a -q 'fbcon=map:0' ${KERNEL_DIR}/boot.scr
 # Buildroot 2022.02's BusyBox configuration invokes recursive make. Keep the
 # Linux default while allowing Docker Desktop to avoid its broken pipe
 # jobserver and parallelize each package with all assigned CPUs.
+ARG BUILD_DEBIAN_ONLY=0
 ARG BUILDROOT_JOBS=auto
 ARG BUILDROOT_USE_MAKE_WRAPPER=0
 ARG BUILDROOT_PRIMARY_SITE=
-RUN wget https://buildroot.org/downloads/buildroot-2022.02.5.tar.gz && \
-    tar -xvf buildroot-2022.02.5.tar.gz && \
-    rm buildroot-2022.02.5.tar.gz
-COPY ./buildroot.config /buildroot-2022.02.5/.config
+RUN if [ "${BUILD_DEBIAN_ONLY}" != "1" ]; then \
+        wget https://buildroot.org/downloads/buildroot-2022.02.5.tar.gz && \
+        tar -xvf buildroot-2022.02.5.tar.gz && \
+        rm buildroot-2022.02.5.tar.gz; \
+    fi
+COPY ./buildroot.config /tmp/buildroot.config
 COPY ./make-no-jobserver.sh /usr/local/bin/make-no-jobserver
 RUN chmod +x /usr/local/bin/make-no-jobserver
-RUN if [ -n "${BUILDROOT_PRIMARY_SITE}" ]; then \
-        sed -i "s|^BR2_PRIMARY_SITE=.*|BR2_PRIMARY_SITE=\"${BUILDROOT_PRIMARY_SITE}\"|" /buildroot-2022.02.5/.config; \
-    fi && \
-    cd /buildroot-2022.02.5 && \
-    make olddefconfig && \
-    jobs="${BUILDROOT_JOBS}" && \
-    if [ "$jobs" = "auto" ]; then jobs="$(nproc)"; fi && \
-    if [ "${BUILDROOT_USE_MAKE_WRAPPER}" = "1" ]; then \
-        MAKE_NO_JOBSERVER_JOBS="$jobs" MAKEFLAGS= MFLAGS= \
-            make MAKE=/usr/local/bin/make-no-jobserver -j1; \
-    else \
-        MAKEFLAGS= make -j"$jobs"; \
+RUN if [ "${BUILD_DEBIAN_ONLY}" != "1" ]; then \
+        cp /tmp/buildroot.config /buildroot-2022.02.5/.config && \
+        if [ -n "${BUILDROOT_PRIMARY_SITE}" ]; then \
+            sed -i "s|^BR2_PRIMARY_SITE=.*|BR2_PRIMARY_SITE=\"${BUILDROOT_PRIMARY_SITE}\"|" /buildroot-2022.02.5/.config; \
+        fi && \
+        cd /buildroot-2022.02.5 && \
+        make olddefconfig && \
+        jobs="${BUILDROOT_JOBS}" && \
+        if [ "$jobs" = "auto" ]; then jobs="$(nproc)"; fi && \
+        if [ "${BUILDROOT_USE_MAKE_WRAPPER}" = "1" ]; then \
+            MAKE_NO_JOBSERVER_JOBS="$jobs" MAKEFLAGS= MFLAGS= \
+                make MAKE=/usr/local/bin/make-no-jobserver -j1; \
+        else \
+            MAKEFLAGS= make -j"$jobs"; \
+        fi; \
     fi
 
 # Buildroot 第二遍（最终配置）
-COPY ./buildroot_finally_config /buildroot-2022.02.5/.config
-RUN if [ -n "${BUILDROOT_PRIMARY_SITE}" ]; then \
-        sed -i "s|^BR2_PRIMARY_SITE=.*|BR2_PRIMARY_SITE=\"${BUILDROOT_PRIMARY_SITE}\"|" /buildroot-2022.02.5/.config; \
-    fi && \
-    cd /buildroot-2022.02.5 && \
-    make olddefconfig && \
-    jobs="${BUILDROOT_JOBS}" && \
-    if [ "$jobs" = "auto" ]; then jobs="$(nproc)"; fi && \
-    if [ "${BUILDROOT_USE_MAKE_WRAPPER}" = "1" ]; then \
-        MAKE_NO_JOBSERVER_JOBS="$jobs" MAKEFLAGS= MFLAGS= \
-            make MAKE=/usr/local/bin/make-no-jobserver -j1; \
-    else \
-        MAKEFLAGS= make -j"$jobs"; \
+COPY ./buildroot_finally_config /tmp/buildroot_finally_config
+RUN if [ "${BUILD_DEBIAN_ONLY}" != "1" ]; then \
+        cp /tmp/buildroot_finally_config /buildroot-2022.02.5/.config && \
+        if [ -n "${BUILDROOT_PRIMARY_SITE}" ]; then \
+            sed -i "s|^BR2_PRIMARY_SITE=.*|BR2_PRIMARY_SITE=\"${BUILDROOT_PRIMARY_SITE}\"|" /buildroot-2022.02.5/.config; \
+        fi && \
+        cd /buildroot-2022.02.5 && \
+        make olddefconfig && \
+        jobs="${BUILDROOT_JOBS}" && \
+        if [ "$jobs" = "auto" ]; then jobs="$(nproc)"; fi && \
+        if [ "${BUILDROOT_USE_MAKE_WRAPPER}" = "1" ]; then \
+            MAKE_NO_JOBSERVER_JOBS="$jobs" MAKEFLAGS= MFLAGS= \
+                make MAKE=/usr/local/bin/make-no-jobserver -j1; \
+        else \
+            MAKEFLAGS= make -j"$jobs"; \
+        fi; \
     fi
 
 # ====== 把内核模块装进 Buildroot target ======
-RUN mkdir -p /buildroot-2022.02.5/output/target/lib/modules && \
-    cp -r ${KERNEL_DIR}/MINSTALL/lib/modules/* /buildroot-2022.02.5/output/target/lib/modules/
+RUN if [ "${BUILD_DEBIAN_ONLY}" != "1" ]; then \
+        mkdir -p /buildroot-2022.02.5/output/target/lib/modules && \
+        cp -r ${KERNEL_DIR}/MINSTALL/lib/modules/* /buildroot-2022.02.5/output/target/lib/modules/; \
+    fi
 
 # ====== Debian bullseye rootfs ======
 RUN mkdir -p /path/to/rootfs && \
@@ -237,8 +248,10 @@ RUN mkdir -p /out/buildroot /out/debian /out/image /out/dtb /out/bootscr /out/ub
     cp ${KERNEL_DIR}/boot.scr /out/bootscr/ && \
     cp -r ${KERNEL_DIR}/MINSTALL/lib /out/modules/ && \
     cp /u-boot-2024.01/u-boot-sunxi-with-spl.bin /out/uboot/ && \
-    cp /buildroot-2022.02.5/output/images/rootfs.ext2 /out/buildroot/ && \
-    cp /buildroot-2022.02.5/output/images/rootfs.tar /out/buildroot/ && \
+    if [ "${BUILD_DEBIAN_ONLY}" != "1" ]; then \
+        cp /buildroot-2022.02.5/output/images/rootfs.ext2 /out/buildroot/ && \
+        cp /buildroot-2022.02.5/output/images/rootfs.tar /out/buildroot/; \
+    fi && \
     if [ -f /path/to/rootfs/etc/debian_version ]; then cp -a /path/to/rootfs/. /out/debian/; fi
 
 # ====== 入口脚本 ======

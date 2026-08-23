@@ -14,6 +14,7 @@ else
     OUTDIR=/mnt/nvme0n1-4/out
 fi
 SIZE_MB="${2:-1024}"
+DEBIAN_ONLY="${DEBIAN_ONLY:-0}"
 
 # Apple Silicon cannot execute the Dockerfile's x86_64-hosted ARM toolchain
 # natively. Docker Desktop's linux/amd64 emulation keeps the build identical
@@ -21,6 +22,9 @@ SIZE_MB="${2:-1024}"
 DOCKER_PLATFORM=""
 DOCKER_NETWORK="host"
 BUILDROOT_BUILD_ARG="--build-arg BUILDROOT_JOBS=auto"
+if [ "$DEBIAN_ONLY" = "1" ]; then
+    BUILDROOT_BUILD_ARG="$BUILDROOT_BUILD_ARG --build-arg BUILD_DEBIAN_ONLY=1"
+fi
 if [ "$HOST_OS" = "Darwin" ]; then
     DOCKER_PLATFORM="--platform=linux/amd64"
     DOCKER_NETWORK="default"
@@ -59,7 +63,11 @@ echo ""
 echo "=== Step 2/3: Extract artifacts to ${OUTDIR} ==="
 mkdir -p "$OUTDIR"
 CID=$(docker create $DOCKER_PLATFORM h616_core_build)
-for artifact in image dtb bootscr uboot modules buildroot; do
+ARTIFACTS="image dtb bootscr uboot modules"
+if [ "$DEBIAN_ONLY" != "1" ]; then
+    ARTIFACTS="$ARTIFACTS buildroot"
+fi
+for artifact in $ARTIFACTS; do
     docker cp "$CID:/out/$artifact" "$OUTDIR/"
 done
 docker rm "$CID"
@@ -92,7 +100,9 @@ fi
 echo ""
 echo "============================================"
 echo "  ALL DONE"
-echo "  ${OUTDIR}/sdcard_buildroot.img"
+if [ "$DEBIAN_ONLY" != "1" ]; then
+    echo "  ${OUTDIR}/sdcard_buildroot.img"
+fi
 echo "  ${OUTDIR}/sdcard_debian.img"
 echo "============================================"
 ls -lh "$OUTDIR"/sdcard_*.img
