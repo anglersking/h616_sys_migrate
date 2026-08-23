@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# Dynamic login banner inspired by Orange Pi's update-motd header.  Keep the
+# Linux hostname and the user-facing board name separate: /etc/hostname is the
+# network/login name, while /etc/peutiy-release describes the hardware.
+
+if [ -r /etc/peutiy-release ]; then
+	. /etc/peutiy-release
+fi
+
+BOARD_NAME=${BOARD_NAME:-Peutiy Pi}
+SOC=${SOC:-Allwinner H616}
+HOST_NAME=$(hostname 2>/dev/null || printf '%s' peutiy)
+KERNEL_VERSION=$(uname -r)
+IP_ADDRESS=$(ip -4 -o addr show scope global 2>/dev/null | awk '
+	{
+		sub(/\/.*/, "", $4)
+		addresses = addresses (addresses ? ", " : "") $4
+	}
+	END { print addresses }
+')
+
+if [ -r /etc/os-release ]; then
+	. /etc/os-release
+fi
+OS_NAME=${PRETTY_NAME:-Debian GNU/Linux}
+
+if command -v toilet >/dev/null 2>&1; then
+	TERM=linux toilet -f pagga -F metal "PEUTIY PI" 2>/dev/null ||
+		TERM=linux toilet -f pagga "PEUTIY PI"
+else
+	printf '%s\n' 'PEUTIY PI'
+fi
+
+printf '\nWelcome to \033[0;91m%s\033[0m with \033[0;91mLinux %s\033[0m\n' \
+	"$BOARD_NAME" "$KERNEL_VERSION"
+printf 'Board: %s | SoC: %s\n' "$BOARD_NAME" "$SOC"
+printf 'OS: %s | Hostname: %s\n' "$OS_NAME" "$HOST_NAME"
+if [ -n "$IP_ADDRESS" ]; then
+	printf 'IP: %s\n' "$IP_ADDRESS"
+fi
+printf '\n'

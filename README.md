@@ -188,12 +188,12 @@ echo spi0.0 > /sys/bus/spi/drivers/fb_st7789v/bind
 
 内核和镜像同时包含 H616 千兆以太网 MAC + Realtek PHY、RTL8723DS SDIO
 Wi-Fi、Linux Bluetooth/BLE 协议栈、Realtek HCI 驱动，以及 `ip`、`iw`、
-`wpa_supplicant`、`rfkill`、`bluetoothctl` 和 `btattach` 工具。启动后可按下面
-的命令确认硬件是否被枚举：
+`wpa_supplicant`、`dhclient`、`rfkill`、`bluetoothctl` 和 `btattach` 工具。
+启动后可按下面的命令确认硬件是否被枚举：
 
 ```bash
-ip link                         # 应看到 eth0；有线 DHCP：udhcpc -i eth0
-modprobe 8723ds                # Wi-Fi 模块（若尚未自动加载）
+ip link                         # 应看到 eth0；有线 DHCP：dhclient eth0
+modprobe 8723ds                 # Wi-Fi 模块（若尚未自动加载）
 rfkill unblock all
 iw dev                          # 应看到 wlan0
 ip link set wlan0 up
@@ -203,6 +203,33 @@ bluetoothctl                    # 蓝牙控制器出现后执行
 power on
 scan on
 ```
+
+连接 WPA/WPA2 Wi-Fi（把下面两个值换成自己的）：
+
+```bash
+WIFI_SSID='你的WiFi名称'
+WIFI_PASSWORD='你的WiFi密码'
+
+modprobe 8723ds 2>/dev/null || true
+rfkill unblock wifi
+ip link set wlan0 up
+wpa_passphrase "$WIFI_SSID" "$WIFI_PASSWORD" > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+wpa_supplicant -B -D nl80211 -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+dhclient -v wlan0
+ip -4 addr show wlan0
+ping -c 3 1.1.1.1
+```
+
+上面的配置文件会保留，重启后需要重新启动连接时执行：
+
+```bash
+rfkill unblock wifi
+ip link set wlan0 up
+wpa_supplicant -B -D nl80211 -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+dhclient wlan0
+```
+
+如果接口不叫 `wlan0`，先以 `iw dev` 或 `ip link` 显示的实际接口名替换命令。
 
 RTL8723DS 的蓝牙部分取决于板上实际连接的 USB/UART HCI 总线：USB HCI 会由
 内核自动绑定；若是独立 UART 模块，需要按原理图对应的 `/dev/ttyS*` 手动运行
@@ -366,8 +393,8 @@ shasum -a 256 out-debian/sdcard_debian.img
 sha256sum out-debian/sdcard_debian.img
 ```
 
-刷卡完成后，把 SD 卡插入开发板再上电。默认登录账号是 `peutiy` / `peutiy`，
-root 诊断账号是 `root` / `peutiy`；联网后请立即修改密码。
+刷卡完成后，把 SD 卡插入开发板再上电。默认 hostname 是 `peutiy`，登录账号和
+密码都是 `root`，即 `root` / `root`；联网后请立即执行 `passwd` 修改密码。
 
 刷完后插卡到 Orange Pi Zero2 上电即可启动。
 
@@ -438,10 +465,21 @@ bootcmd:  fatload mmc 0:1 0x40200000 Image
           booti 0x40200000 - 0x4fa00000
 ```
 
-Debian 镜像首次启动的测试账号为 `peutiy`，密码为 `peutiy`；也可使用
-`root` / `peutiy` 进行诊断。镜像会在 ST7789 的虚拟终端 `tty1` 显示登录提示；
-HDMI 仍会初始化。
-这是硬件测试凭据，连接网络前应立即修改密码。
+Debian 镜像的 hostname 是 `peutiy`，因此登录提示显示为 `peutiy login:`，登录后
+Shell 提示符为 `root@peutiy`。测试账号和密码都是 `root`。镜像会在 ST7789 的
+虚拟终端 `tty1` 显示登录提示；HDMI 仍会初始化。这是硬件测试凭据，连接网络前
+应立即运行 `passwd` 修改密码。
+
+成功登录后，PAM 会运行 `/etc/update-motd.d/10-peutiy-header`，用下面的命令生成
+与香橙派相同机制的动态字符画和板卡信息：
+
+```bash
+TERM=linux toilet -f pagga -F metal "PEUTIY PI"
+```
+
+系统网络名保存在 `/etc/hostname`，人类可读的板卡名 `Peutiy Pi` 保存在
+`/etc/peutiy-release` 的 `BOARD_NAME` 中；两者用途不同。实现说明见
+[Debian 登录欢迎信息笔记](docs/debian-login-banner.md)。
 
 ## 调试
 
@@ -478,6 +516,7 @@ fbtest --fb "/dev/fb${ST7789_FB}"
 ├── build.sh                       # Docker 构建脚本
 ├── auto_write.sh                  # SD 卡自动烧录脚本
 ├── fixbug/                        # 驱动修复补丁
+├── docs/debian-login-banner.md    # hostname、BOARD_NAME 与动态 MOTD
 ├── docs/st7789-adaptation-notes.md # ST7789 适配学习笔记
 ├── picture/                       # 项目图片
 └── sdcard_make/                   # SD 卡制作脚本

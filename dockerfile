@@ -211,9 +211,14 @@ RUN mkdir -p /path/to/rootfs && \
 
 COPY ./peutiy-hdmi-console.sh /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console
 COPY ./peutiy-hdmi-console.service /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service
+COPY ./peutiy-release /path/to/rootfs/etc/peutiy-release
+COPY ./10-peutiy-header /path/to/rootfs/etc/update-motd.d/10-peutiy-header
 RUN grep -q 'fb_st7789v' /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console && \
     grep -q 'Keep ST7789 framebuffer console on tty1' \
-        /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service
+        /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service && \
+    grep -q 'BOARD_NAME="Peutiy Pi"' /path/to/rootfs/etc/peutiy-release && \
+    grep -q 'toilet -f pagga -F metal "PEUTIY PI"' \
+        /path/to/rootfs/etc/update-motd.d/10-peutiy-header
 
 # Debian's bootstrap root account is locked by default. These credentials are
 # solely for first-boot HDMI/serial diagnostics and must be changed afterward.
@@ -222,13 +227,18 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	sed -i -E "s/^(deb(-src)?[[:space:]]+[^[:space:]]+[[:space:]]+bullseye[[:space:]]+).*/\\1main contrib non-free/" /etc/apt/sources.list; \
 	DEBIAN_FRONTEND=noninteractive apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	    kbd fbset iproute2 iw wpasupplicant bluez rfkill wireless-regdb firmware-realtek; \
+	    kbd fbset iproute2 iw wpasupplicant isc-dhcp-client bluez rfkill \
+	    wireless-regdb firmware-realtek toilet; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
-        echo "root:peutiy" | chpasswd; \
-        useradd --create-home --shell /bin/bash peutiy; \
-        echo "peutiy:peutiy" | chpasswd; \
-	chmod 0755 /usr/local/sbin/peutiy-hdmi-console; \
+	printf "peutiy\n" > /etc/hostname; \
+	printf "127.0.0.1 localhost\n127.0.1.1 peutiy\n::1 localhost ip6-localhost ip6-loopback\n" > /etc/hosts; \
+	printf "PRETTY_HOSTNAME=\"Peutiy Pi\"\n" > /etc/machine-info; \
+	echo "root:root" | chpasswd; \
+	: > /etc/motd; \
+	if [ -e /etc/update-motd.d/10-uname ]; then chmod 0644 /etc/update-motd.d/10-uname; fi; \
+	chmod 0755 /usr/local/sbin/peutiy-hdmi-console \
+	    /etc/update-motd.d/10-peutiy-header; \
         mkdir -p /etc/systemd/system/getty.target.wants; \
         ln -sf /lib/systemd/system/getty@.service \
 	    /etc/systemd/system/getty.target.wants/getty@tty1.service; \

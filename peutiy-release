@@ -1,0 +1,4 @@
+BOARD="peutiy-pi"
+BOARD_NAME="Peutiy Pi"
+BOARD_FAMILY="sun50iw9"
+SOC="Allwinner H616"
