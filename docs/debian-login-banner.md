@@ -66,7 +66,7 @@ TERM=linux toilet -f pagga -F metal "PEUTIY PI"
 
 `dockerfile` 在 Debian rootfs 中完成以下操作：
 
-1. 安装 `toilet` 和 `isc-dhcp-client`；
+1. 安装 `toilet`、NetworkManager、`ping`、`htop` 和 `isc-dhcp-client`；
 2. 写入 `/etc/hostname` 和 `/etc/hosts`；
 3. 写入 `/etc/machine-info` 的 `PRETTY_HOSTNAME`；
 4. 把 root 测试密码设为 `root`；

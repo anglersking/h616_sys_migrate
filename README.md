@@ -188,7 +188,8 @@ echo spi0.0 > /sys/bus/spi/drivers/fb_st7789v/bind
 
 内核和镜像同时包含 H616 千兆以太网 MAC + Realtek PHY、RTL8723DS SDIO
 Wi-Fi、Linux Bluetooth/BLE 协议栈、Realtek HCI 驱动，以及 `ip`、`iw`、
-`wpa_supplicant`、`dhclient`、`rfkill`、`bluetoothctl` 和 `btattach` 工具。
+`nmcli`、`wpa_supplicant`、`dhclient`、`ping`、`htop`、`rfkill`、
+`bluetoothctl` 和 `btattach` 工具。NetworkManager 已设置为开机启动。
 启动后可按下面的命令确认硬件是否被枚举：
 
 ```bash
@@ -204,7 +205,36 @@ power on
 scan on
 ```
 
-连接 WPA/WPA2 Wi-Fi（把下面两个值换成自己的）：
+推荐使用 `nmcli` 连接 WPA/WPA2 Wi-Fi：
+
+```bash
+nmcli radio wifi on
+nmcli device wifi rescan
+nmcli device wifi list
+nmcli device wifi connect '你的WiFi名称' password '你的WiFi密码'
+nmcli connection show --active
+ip -4 addr
+ping -c 3 1.1.1.1
+```
+
+NetworkManager 会把连接配置保存在 `/etc/NetworkManager/system-connections/`，
+以后开机会自动重连。忘记或删除某个连接：
+
+```bash
+nmcli connection show
+nmcli connection delete '你的WiFi名称'
+```
+
+如果 NetworkManager 没识别到无线接口，先执行：
+
+```bash
+modprobe 8723ds
+rfkill unblock wifi
+systemctl restart NetworkManager
+nmcli device status
+```
+
+下面是不用 NetworkManager、直接调用 `wpa_supplicant` 的备用流程：
 
 ```bash
 WIFI_SSID='你的WiFi名称'
@@ -221,7 +251,7 @@ ip -4 addr show wlan0
 ping -c 3 1.1.1.1
 ```
 
-上面的配置文件会保留，重启后需要重新启动连接时执行：
+备用流程的配置文件会保留，重启后需要重新启动连接时执行：
 
 ```bash
 rfkill unblock wifi
@@ -230,7 +260,9 @@ wpa_supplicant -B -D nl80211 -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan
 dhclient wlan0
 ```
 
-如果接口不叫 `wlan0`，先以 `iw dev` 或 `ip link` 显示的实际接口名替换命令。
+如果接口不叫 `wlan0`，先以 `nmcli device status`、`iw dev` 或 `ip link` 显示的
+实际接口名替换命令。不要同时让 NetworkManager 和手动启动的 `wpa_supplicant`
+管理同一个接口；使用备用流程前可先执行 `systemctl stop NetworkManager`。
 
 RTL8723DS 的蓝牙部分取决于板上实际连接的 USB/UART HCI 总线：USB HCI 会由
 内核自动绑定；若是独立 UART 模块，需要按原理图对应的 `/dev/ttyS*` 手动运行

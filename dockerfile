@@ -227,8 +227,8 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	sed -i -E "s/^(deb(-src)?[[:space:]]+[^[:space:]]+[[:space:]]+bullseye[[:space:]]+).*/\\1main contrib non-free/" /etc/apt/sources.list; \
 	DEBIAN_FRONTEND=noninteractive apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	    kbd fbset iproute2 iw wpasupplicant isc-dhcp-client bluez rfkill \
-	    wireless-regdb firmware-realtek toilet; \
+	    kbd fbset iproute2 iw wpasupplicant isc-dhcp-client network-manager \
+	    iputils-ping htop bluez rfkill wireless-regdb firmware-realtek toilet; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
 	printf "peutiy\n" > /etc/hostname; \
@@ -243,6 +243,10 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
         ln -sf /lib/systemd/system/getty@.service \
 	    /etc/systemd/system/getty.target.wants/getty@tty1.service; \
 	mkdir -p /etc/systemd/system/multi-user.target.wants; \
+	ln -sf /lib/systemd/system/NetworkManager.service \
+	    /etc/systemd/system/multi-user.target.wants/NetworkManager.service; \
+	ln -sf /lib/systemd/system/NetworkManager.service \
+	    /etc/systemd/system/dbus-org.freedesktop.NetworkManager.service; \
 	ln -sf /etc/systemd/system/peutiy-hdmi-console.service \
 	    /etc/systemd/system/multi-user.target.wants/peutiy-hdmi-console.service'
 
