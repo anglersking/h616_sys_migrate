@@ -58,7 +58,6 @@ rmmod 8723ds              # 卸载模块
         width = <172>;
         height = <320>;
         rotate = <90>;
-        bgr;
     };
 };
 

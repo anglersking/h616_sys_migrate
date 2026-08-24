@@ -329,7 +329,8 @@ wifi_pwrseq: wifi-pwrseq {
 		height = <320>;
 		/* 172x320 modules use the 34-pixel RAM-window offset in landscape. */
 		y-offset = <34>;
-		bgr;
+		/* This panel uses the driver's native RGB order.  Enabling the
+		 * optional bgr property swaps red and blue on the verified module. */
 		status = "okay";
 	};
 };
