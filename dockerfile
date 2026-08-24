@@ -211,6 +211,9 @@ RUN mkdir -p /path/to/rootfs && \
 
 COPY ./peutiy-hdmi-console.sh /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console
 COPY ./peutiy-hdmi-console.service /path/to/rootfs/etc/systemd/system/peutiy-hdmi-console.service
+COPY ./peutiy-grow-rootfs.sh /path/to/rootfs/usr/local/sbin/peutiy-grow-rootfs
+COPY ./peutiy-grow-rootfs.service /path/to/rootfs/etc/systemd/system/peutiy-grow-rootfs.service
+COPY ./docs/rootfs-auto-expand.md /path/to/rootfs/usr/share/doc/peutiy-pi/rootfs-auto-expand.md
 COPY ./peutiy-release /path/to/rootfs/etc/peutiy-release
 COPY ./10-peutiy-header /path/to/rootfs/etc/update-motd.d/10-peutiy-header
 RUN grep -q 'fb_st7789v' /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console && \
@@ -228,7 +231,8 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	DEBIAN_FRONTEND=noninteractive apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 	    kbd fbset iproute2 iw wpasupplicant isc-dhcp-client network-manager \
-	    iputils-ping htop bluez rfkill wireless-regdb firmware-realtek toilet; \
+	    iputils-ping htop bluez rfkill wireless-regdb firmware-realtek toilet \
+	    cloud-guest-utils e2fsprogs; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
 	printf "peutiy\n" > /etc/hostname; \
@@ -238,6 +242,7 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	: > /etc/motd; \
 	if [ -e /etc/update-motd.d/10-uname ]; then chmod 0644 /etc/update-motd.d/10-uname; fi; \
 	chmod 0755 /usr/local/sbin/peutiy-hdmi-console \
+	    /usr/local/sbin/peutiy-grow-rootfs \
 	    /etc/update-motd.d/10-peutiy-header; \
         mkdir -p /etc/systemd/system/getty.target.wants; \
         ln -sf /lib/systemd/system/getty@.service \
@@ -248,7 +253,9 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	ln -sf /lib/systemd/system/NetworkManager.service \
 	    /etc/systemd/system/dbus-org.freedesktop.NetworkManager.service; \
 	ln -sf /etc/systemd/system/peutiy-hdmi-console.service \
-	    /etc/systemd/system/multi-user.target.wants/peutiy-hdmi-console.service'
+	    /etc/systemd/system/multi-user.target.wants/peutiy-hdmi-console.service; \
+	ln -sf /etc/systemd/system/peutiy-grow-rootfs.service \
+	    /etc/systemd/system/multi-user.target.wants/peutiy-grow-rootfs.service'
 
 # ====== 产物整理到 /out ======
 RUN grep -q 'sun50i-h616-orangepi-zero2.dtb' \
