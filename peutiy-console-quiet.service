@@ -1,0 +1,12 @@
+[Unit]
+Description=Reduce routine kernel console noise after boot
+After=systemd-journald.service multi-user.target
+Before=getty.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/peutiy-console-quiet
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

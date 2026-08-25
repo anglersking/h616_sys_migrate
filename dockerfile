@@ -214,6 +214,9 @@ COPY ./peutiy-hdmi-console.service /path/to/rootfs/etc/systemd/system/peutiy-hdm
 COPY ./peutiy-grow-rootfs.sh /path/to/rootfs/usr/local/sbin/peutiy-grow-rootfs
 COPY ./peutiy-grow-rootfs.service /path/to/rootfs/etc/systemd/system/peutiy-grow-rootfs.service
 COPY ./docs/rootfs-auto-expand.md /path/to/rootfs/usr/share/doc/peutiy-pi/rootfs-auto-expand.md
+COPY ./peutiy-console-quiet.sh /path/to/rootfs/usr/local/sbin/peutiy-console-quiet
+COPY ./peutiy-console-quiet.service /path/to/rootfs/etc/systemd/system/peutiy-console-quiet.service
+COPY ./peutiy-journald-console.conf /path/to/rootfs/etc/systemd/journald.conf.d/peutiy-console.conf
 COPY ./peutiy-release /path/to/rootfs/etc/peutiy-release
 COPY ./10-peutiy-header /path/to/rootfs/etc/update-motd.d/10-peutiy-header
 RUN grep -q 'fb_st7789v' /path/to/rootfs/usr/local/sbin/peutiy-hdmi-console && \
@@ -243,6 +246,7 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	if [ -e /etc/update-motd.d/10-uname ]; then chmod 0644 /etc/update-motd.d/10-uname; fi; \
 	chmod 0755 /usr/local/sbin/peutiy-hdmi-console \
 	    /usr/local/sbin/peutiy-grow-rootfs \
+	    /usr/local/sbin/peutiy-console-quiet \
 	    /etc/update-motd.d/10-peutiy-header; \
         mkdir -p /etc/systemd/system/getty.target.wants; \
         ln -sf /lib/systemd/system/getty@.service \
@@ -255,7 +259,9 @@ RUN test ! -f /path/to/rootfs/etc/debian_version || \
 	ln -sf /etc/systemd/system/peutiy-hdmi-console.service \
 	    /etc/systemd/system/multi-user.target.wants/peutiy-hdmi-console.service; \
 	ln -sf /etc/systemd/system/peutiy-grow-rootfs.service \
-	    /etc/systemd/system/multi-user.target.wants/peutiy-grow-rootfs.service'
+	    /etc/systemd/system/multi-user.target.wants/peutiy-grow-rootfs.service; \
+	ln -sf /etc/systemd/system/peutiy-console-quiet.service \
+	    /etc/systemd/system/multi-user.target.wants/peutiy-console-quiet.service'
 
 # ====== 产物整理到 /out ======
 RUN grep -q 'sun50i-h616-orangepi-zero2.dtb' \

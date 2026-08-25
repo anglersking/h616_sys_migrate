@@ -33,6 +33,10 @@ USB-C 端口保留为 peripheral 模式，不与 USB-A Host 的键盘、鼠标�
 OpenClaw、DeepSeek 和飞书接入步骤见
 [OpenClaw + 飞书配置指南](docs/openclaw-feishu.md)。
 
+Debian 进入多用户目标后会把 routine kernel console 日志降到 error 级别，避免
+`systemd-journald` 的 watchdog、轮转和压缩提示持续刷在 ST7789 上；完整日志仍可用
+`journalctl` 和 `dmesg` 查看。启动阶段日志仍保留，便于排查显示和启动问题。
+
 #### 当前显示逻辑
 
 系统同时保留串口和屏幕终端：
