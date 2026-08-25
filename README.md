@@ -25,6 +25,11 @@ Debian `tty1` 登录提示和登录后的终端放在 ST7789 上；HDMI 同时�
 `con2fbmap` 把 `tty1` 临时切到 HDMI。USB-A Host 键盘已在 Peutiy-Pi 实板上验证。
 USB-C 端口保留为 peripheral 模式，不与 USB-A Host 的键盘、鼠标等外设用途混用。
 
+镜像首次启动时会自动扩展 Debian 根分区和 ext4 文件系统，以使用整张 SD 卡。
+同一个约 1.88 GB 的镜像可直接写入 16 GB、32 GB、64 GB、128 GB 等容量的卡，
+不需要修改 U-Boot，也不需要手动执行扩容命令。原理和检查方法见
+[Debian 首次启动自动扩容](docs/rootfs-auto-expand.md)。
+
 #### 当前显示逻辑
 
 系统同时保留串口和屏幕终端：

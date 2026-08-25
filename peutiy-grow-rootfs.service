@@ -1,0 +1,13 @@
+[Unit]
+Description=Expand Peutiy Pi root filesystem to fill the SD card
+Documentation=file:/usr/share/doc/peutiy-pi/rootfs-auto-expand.md
+After=local-fs.target
+ConditionPathExists=!/var/lib/peutiy/rootfs-expanded
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/peutiy-grow-rootfs
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
