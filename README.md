@@ -30,6 +30,9 @@ USB-C 端口保留为 peripheral 模式，不与 USB-A Host 的键盘、鼠标�
 不需要修改 U-Boot，也不需要手动执行扩容命令。原理和检查方法见
 [Debian 首次启动自动扩容](docs/rootfs-auto-expand.md)。
 
+OpenClaw、DeepSeek 和飞书接入步骤见
+[OpenClaw + 飞书配置指南](docs/openclaw-feishu.md)。
+
 #### 当前显示逻辑
 
 系统同时保留串口和屏幕终端：
