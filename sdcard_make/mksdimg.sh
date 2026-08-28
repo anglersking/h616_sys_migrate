@@ -5,7 +5,7 @@
 set -e
 
 OUTDIR="${1:-/mnt/nvme0n1-4/out}"
-SIZE_MB="${2:-512}"
+SIZE_MB="${2:-1024}"
 
 cd "$OUTDIR" || { echo "ERROR: $OUTDIR not found"; exit 1; }
 
@@ -49,14 +49,14 @@ EOF
     mkfs.ext4 -F ${LOOP}p2
 
     # 写入 U-Boot 到 8KB 偏移
-    dd if=u-boot-sunxi-with-spl.bin of=$LOOP bs=8K seek=1
+    dd if=uboot/u-boot-sunxi-with-spl.bin of=$LOOP bs=8K seek=1
 
     # 写入 boot 分区
     MNT=$(mktemp -d)
     mount ${LOOP}p1 $MNT
-    cp Image "$MNT/"
-    cp sun50i-h616-orangepi-zero2.dtb "$MNT/"
-    cp boot.scr "$MNT/"
+    cp image/Image "$MNT/"
+    cp dtb/sun50i-h616-orangepi-zero2.dtb "$MNT/"
+    cp bootscr/boot.scr "$MNT/"
     umount $MNT
 
     # 写入 rootfs 分区
@@ -67,7 +67,7 @@ EOF
     else
         cp -a "$ROOTFS_SRC/." "$MNT2/"
     fi
-    cp -r modules "$MNT2/lib/"
+    cp -a modules/lib/. "$MNT2/lib/"
     umount $MNT2
 
     losetup -d $LOOP
@@ -76,10 +76,16 @@ EOF
 }
 
 # --- Buildroot SD 镜像 ---
-make_img sdcard_buildroot.img buildroot/rootfs.tar tar
+if [ -f buildroot/rootfs.tar ]; then
+    make_img sdcard_buildroot.img buildroot/rootfs.tar tar
+else
+    echo "=== Skipping sdcard_buildroot.img (no Buildroot rootfs) ==="
+fi
 
 # --- Debian SD 镜像 ---
-if [ -f debian/etc/debian_version ]; then
+if [ -f debian-rootfs.tar ]; then
+    make_img sdcard_debian.img debian-rootfs.tar tar
+elif [ -f debian/etc/debian_version ]; then
     make_img sdcard_debian.img debian cp
 else
     echo "=== Skipping sdcard_debian.img (no debian rootfs) ==="
